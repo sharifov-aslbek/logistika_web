@@ -1,0 +1,28 @@
+include:
+  - project: devops/ci-templates
+    ref: v1.0.10
+    file: /.erp-docker-swarm.yml
+
+
+variables:
+  PROJECT: bizcom/$CI_PROJECT_NAME
+  USE_ENV_FILE: "true"
+
+
+prepare:
+  extends: .use_env_file
+  
+
+build:
+  extends: .build_template
+
+
+deploy:
+  stage: deploy
+  image: curlimages/curl:latest
+  tags:
+    - runner-02
+  script:
+    - "curl -X POST $PORTAINER_WEBHOOK_URL"
+  only:
+    - master

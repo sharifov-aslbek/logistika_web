@@ -1,0 +1,376 @@
+{
+    "openapi": "3.0.1",
+    "info": {
+        "title": "TezDoc API (Основной процесс)",
+        "description": "Операционный API для создания писем, подписания, работы с шаблонами и реестрами.",
+        "version": "1.0"
+    },
+    "tags": [
+        { "name": "Auth", "description": "Только вход в систему" },
+        { "name": "Mail", "description": "Основной документооборот (Письма)" },
+        { "name": "Branch", "description": "Филиалы и настройка подписантов" },
+        { "name": "Registry", "description": "Массовая рассылка (Реестры)" },
+        { "name": "Template", "description": "Шаблоны документов" },
+        { "name": "Helpers", "description": "Справочники (Регионы, Районы) и Интеграции" }
+    ],
+    "paths": {
+        "/api/auth/login": {
+            "post": {
+                "tags": [ "Auth" ],
+                "summary": "Получить токен доступа (Вход)",
+                "description": "Отправьте номер телефона и пароль для получения Bearer токена.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/LoginDto" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Успешный вход" }
+                }
+            }
+        },
+        "/api/user/me": {
+            "get": {
+                "tags": [ "Auth" ],
+                "summary": "Получить профиль текущего пользователя",
+                "description": "Возвращает информацию о пользователе, его роли и организации по токену.",
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/mail": {
+            "post": {
+                "tags": [ "Mail" ],
+                "summary": "Создать новое письмо (Одиночное)",
+                "description": "Создает черновик письма с PDF файлом. Если для филиала требуются подписанты, письмо будет иметь статус 'Ожидает подписи'.",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ReceiverName": { "type": "string", "description": "ФИО получателя" },
+                                    "ReceiverAddress": { "type": "string", "description": "Адрес получателя" },
+                                    "PagesCount": { "type": "integer", "format": "int32", "description": "Количество страниц" },
+                                    "RegionId": { "type": "integer", "format": "int64", "description": "ID Региона (Области)" },
+                                    "AreaId": { "type": "integer", "format": "int64", "description": "ID Района" },
+                                    "BranchId": { "type": "integer", "format": "int64", "description": "ID Филиала (отправителя)" },
+                                    "OrganizationId": { "type": "integer", "format": "int64", "description": "ID Организации" },
+                                    "PdfFile": { "type": "string", "format": "binary", "description": "Файл PDF" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Создано" }
+                }
+            }
+        },
+        "/api/mail/all": {
+            "get": {
+                "tags": [ "Mail" ],
+                "summary": "Получить список писем (Фильтрация)",
+                "description": "Возвращает список писем с учетом пагинации и фильтров. В ответе приходят статусы подписантов.",
+                "parameters": [
+                    { "name": "PageSize", "in": "query", "description": "Кол-во элементов на странице", "schema": { "type": "integer" } },
+                    { "name": "PageIndex", "in": "query", "description": "Номер страницы", "schema": { "type": "integer" } },
+                    { "name": "StartDate", "in": "query", "description": "Начальная дата", "schema": { "type": "string", "format": "date-time" } },
+                    { "name": "EndDate", "in": "query", "description": "Конечная дата", "schema": { "type": "string", "format": "date-time" } },
+                    { "name": "IsSend", "in": "query", "description": "Статус отправки (true=Отправлено, false=Черновик/В ожидании)", "schema": { "type": "boolean" } },
+                    { "name": "BranchId", "in": "query", "description": "Фильтр по филиалу", "schema": { "type": "integer" } },
+                    { "name": "OrganizationId", "in": "query", "description": "Фильтр по организации", "schema": { "type": "integer" } }
+                ],
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/mail/{uid}": {
+            "get": {
+                "tags": [ "Mail" ],
+                "summary": "Детали письма (включая статус подписей)",
+                "description": "Возвращает полную информацию о письме, включая массив 'signers', где видно, кто уже подписал, а кто нет.",
+                "parameters": [
+                    { "name": "uid", "in": "path", "required": true, "description": "Уникальный ID (например TD123)", "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/mail/update/{uid}": {
+            "patch": {
+                "tags": [ "Mail" ],
+                "summary": "Обновить письмо",
+                "description": "Позволяет изменить данные письма (адрес, получатель), если оно еще НЕ отправлено.",
+                "parameters": [
+                    { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/UpdateMailDto" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Обновлено" }
+                }
+            }
+        },
+        "/api/mail/send/{uid}": {
+            "patch": {
+                "tags": [ "Mail" ],
+                "summary": "Подписать и Отправить",
+                "description": "Если настроены подписанты: добавляет подпись текущего пользователя. Если это была последняя необходимая подпись — отправляет письмо в PostUz. Если подписанты не нужны — отправляет сразу.",
+                "parameters": [
+                    { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": { "description": "Подписано / Отправлено" }
+                }
+            }
+        },
+        "/api/mail/{uid}/download": {
+            "get": {
+                "tags": [ "Mail" ],
+                "summary": "Скачать PDF",
+                "parameters": [
+                    { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } }
+                ],
+                "responses": {
+                    "200": { "description": "Файловый поток (File Stream)" }
+                }
+            }
+        },
+        "/api/mail/export-excel": {
+            "get": {
+                "tags": [ "Mail" ],
+                "summary": "Экспорт в Excel",
+                "description": "Скачивает все письма, попадающие под фильтры, в формате .xlsx.",
+                "parameters": [
+                    { "name": "StartDate", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+                    { "name": "EndDate", "in": "query", "schema": { "type": "string", "format": "date-time" } },
+                    { "name": "IsSend", "in": "query", "schema": { "type": "boolean" } },
+                    { "name": "BranchId", "in": "query", "schema": { "type": "integer" } }
+                ],
+                "responses": {
+                    "200": { "description": "Excel файл" }
+                }
+            }
+        },
+        "/api/registry/queue-mails": {
+            "post": {
+                "tags": [ "Registry" ],
+                "summary": "Массовое создание писем (Очередь JSON)",
+                "description": "Принимает массив данных. Для каждого элемента генерирует PDF на основе указанного Шаблона и ставит в очередь на создание.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/RegistryRequestModel" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Добавлено в очередь" }
+                }
+            }
+        },
+        "/api/branch/my-organization-branches": {
+            "get": {
+                "tags": [ "Branch" ],
+                "summary": "Список филиалов организации",
+                "description": "Используется для выпадающих списков (Dropdowns) при создании письма.",
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/branch/{branchId}/signers": {
+            "get": {
+                "tags": [ "Branch" ],
+                "summary": "Получить текущих подписантов филиала",
+                "parameters": [
+                    { "name": "branchId", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } }
+                ],
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/branch/set-signers": {
+            "post": {
+                "tags": [ "Branch" ],
+                "summary": "Назначить подписантов для филиала",
+                "description": "Позволяет Директору указать, чьи подписи требуются для отправки писем из этого филиала.",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": { "$ref": "#/components/schemas/SetBranchSignersDto" }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Сохранено" }
+                }
+            }
+        },
+        "/api/template": {
+            "get": {
+                "tags": [ "Template" ],
+                "summary": "Список шаблонов",
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            },
+            "post": {
+                "tags": [ "Template" ],
+                "summary": "Загрузить новый шаблон",
+                "description": "Загружает HTML/Word файл, который будет использоваться для генерации писем через Реестр.",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [ "File", "Name" ],
+                                "type": "object",
+                                "properties": {
+                                    "Name": { "type": "string", "description": "Название шаблона (уникальное)" },
+                                    "File": { "type": "string", "format": "binary" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/template/{id}": {
+            "put": {
+                "tags": [ "Template" ],
+                "summary": "Обновить файл шаблона",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "required": [ "Name" ],
+                                "type": "object",
+                                "properties": {
+                                    "Name": { "type": "string" },
+                                    "File": { "type": "string", "format": "binary" }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            },
+            "delete": {
+                "tags": [ "Template" ],
+                "summary": "Удалить шаблон",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+                ],
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/region": {
+            "get": {
+                "tags": [ "Helpers" ],
+                "summary": "Получить список регионов (Областей)",
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        },
+        "/api/region/{id}/areas": {
+            "get": {
+                "tags": [ "Helpers" ],
+                "summary": "Получить список районов по ID региона",
+                "parameters": [
+                    { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+                ],
+                "responses": {
+                    "200": { "description": "Успешно" }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "LoginDto": {
+                "required": [ "password", "phone" ],
+                "type": "object",
+                "properties": {
+                    "phone": { "type": "string", "example": "998901234567" },
+                    "password": { "type": "string" }
+                }
+            },
+            "UpdateMailDto": {
+                "type": "object",
+                "properties": {
+                    "receiverName": { "type": "string", "description": "ФИО получателя" },
+                    "receiverAddress": { "type": "string", "description": "Адрес" },
+                    "pagesCount": { "type": "integer", "format": "int32" },
+                    "regionId": { "type": "integer", "format": "int64" },
+                    "areaId": { "type": "integer", "format": "int64" }
+                }
+            },
+            "SetBranchSignersDto": {
+                "type": "object",
+                "properties": {
+                    "branchId": { "type": "integer", "format": "int64" },
+                    "userIds": {
+                        "type": "array",
+                        "description": "Массив ID пользователей, которые будут подписывать",
+                        "items": { "type": "integer", "format": "int64" }
+                    }
+                }
+            },
+            "RegistryRequestModel": {
+                "required": [ "mails" ],
+                "type": "object",
+                "properties": {
+                    "mails": {
+                        "type": "array",
+                        "items": { "$ref": "#/components/schemas/MailRegistryItemModel" }
+                    }
+                }
+            },
+            "MailRegistryItemModel": {
+                "required": [ "address", "areaId", "content", "receiver", "regionId", "templateName" ],
+                "type": "object",
+                "properties": {
+                    "receiver": { "type": "string", "description": "Получатель" },
+                    "regionId": { "type": "integer", "format": "int64" },
+                    "areaId": { "type": "integer", "format": "int64" },
+                    "address": { "type": "string", "description": "Полный адрес" },
+                    "content": { "type": "string", "description": "Данные для подстановки в шаблон (JSON строка)" },
+                    "templateName": { "type": "string", "description": "Имя существующего шаблона" }
+                }
+            }
+        },
+        "securitySchemes": {
+            "Bearer": {
+                "type": "http",
+                "scheme": "Bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    },
+    "security": [
+        { "Bearer": [] }
+    ]
+}
