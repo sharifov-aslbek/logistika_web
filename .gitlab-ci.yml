@@ -1,22 +1,41 @@
-include:
-  - project: devops/ci-templates
-    ref: v1.0.10
-    file: /.erp-docker-swarm.yml
-
+stages:
+  - build
+  - deploy
 
 variables:
-  PROJECT: bizcom/$CI_PROJECT_NAME
-  USE_ENV_FILE: "true"
+  HARBOR_URL: "har.hippo.uz"
+  PROJECT_NAME: "bizcom"
+  IMAGE_TAG: "$CI_COMMIT_SHORT_SHA"
+  IMAGE_PATH: "${HARBOR_URL}/${PROJECT_NAME}/${CI_PROJECT_NAME}"
 
-
-prepare:
-  extends: .use_env_file
-  
-
+# =============================================================================
+# Build — собираем Docker-образ и пушим в Harbor
+# =============================================================================
 build:
-  extends: .build_template
+  stage: build
+  image: docker:27
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--tls=false"]
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+  tags:
+    - runner-02
+  script:
+    - docker info
+    - echo "$HARBOR_PASSWORD" | docker login -u "$HARBOR_USERNAME" --password-stdin "$HARBOR_URL"
+    - docker build --target api -t "${IMAGE_PATH}:${IMAGE_TAG}" -t "${IMAGE_PATH}:latest" .
+    - docker push "${IMAGE_PATH}:${IMAGE_TAG}"
+    - docker push "${IMAGE_PATH}:latest"
+    - docker rmi "${IMAGE_PATH}:${IMAGE_TAG}" "${IMAGE_PATH}:latest"
+  only:
+    - master
 
-
+# =============================================================================
+# Deploy — уведомляем Portainer для обновления стека
+# =============================================================================
 deploy:
   stage: deploy
   image: curlimages/curl:latest
