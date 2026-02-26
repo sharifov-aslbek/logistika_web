@@ -1,5 +1,5 @@
 import { EIMZO_URL, EIMZO_HOST, EIMZO_API_KEY } from '@/configs/eimzo.config'
-
+import { normalizeToStdBase64 } from '@/utils/base64'
 // --- Helper Classes (Ported from Vue) ---
 
 class CertificateCertkey {
@@ -270,31 +270,65 @@ class EImzoClient {
         }
     }
 
-    // 4. Create PKCS7 Signature
-    async createPkcs7(keyId: string, hash: string) {
-        // Base64 Helper
-        const _encode = (u: string) =>
-            btoa(
-                encodeURIComponent(u).replace(/%([0-9A-F]{2})/g, (match, p1) =>
-                    String.fromCharCode(parseInt(p1, 16)),
-                ),
-            )
-        const base64Hash = _encode(hash)
-            .replace(/[+/]/g, (m0) => (m0 === '+' ? '-' : '_'))
-            .replace(/=/g, '')
+    async createPkcs7(keyId: string, hashCode: string) {
+        console.log('hashCode len:', hashCode?.length)
+        console.log('hashCode sample:', String(hashCode).slice(0, 80))
+
+        // === eski kabi hashni base64 qilish (urisafe emas) ===
+        const fromCharCode = String.fromCharCode
+
+        const cb_utob = (c: string) => {
+            if (c.length < 2) {
+                const cc = c.charCodeAt(0)
+                return cc < 0x80
+                    ? c
+                    : cc < 0x800
+                        ? fromCharCode(0xc0 | (cc >>> 6)) + fromCharCode(0x80 | (cc & 0x3f))
+                        : fromCharCode(0xe0 | ((cc >>> 12) & 0x0f)) +
+                        fromCharCode(0x80 | ((cc >>> 6) & 0x3f)) +
+                        fromCharCode(0x80 | (cc & 0x3f))
+            } else {
+                const cc =
+                    0x10000 +
+                    (c.charCodeAt(0) - 0xD800) * 0x400 +
+                    (c.charCodeAt(1) - 0xDC00)
+                return (
+                    fromCharCode(0xf0 | ((cc >>> 18) & 0x07)) +
+                    fromCharCode(0x80 | ((cc >>> 12) & 0x3f)) +
+                    fromCharCode(0x80 | ((cc >>> 6) & 0x3f)) +
+                    fromCharCode(0x80 | (cc & 0x3f))
+                )
+            }
+        }
+
+        // eslint-disable-next-line no-control-regex
+        const re_utob = /[\uD800-\uDBFF][\uDC00-\uDFFFF]|[^\x00-\x7F]/g
+        const utob = (u: string) => u.replace(re_utob, cb_utob)
+
+        const base64Hash = btoa(utob(hashCode))
 
         const data = {
             plugin: 'pkcs7',
             name: 'create_pkcs7',
-            arguments: [base64Hash, keyId, 'no'],
+            arguments: [base64Hash, keyId, 'yes'],
         }
 
         const response = await this._makeRequest(data)
-        if (response.success) {
-            return response.pkcs7_64
-        } else {
+
+        if (!response.success) {
             throw new Error('Sign failed')
         }
+
+        // === MUHIM: pkcs7_64 ni normalize qilish ===
+        const rawPkcs7 = response.pkcs7_64
+
+        console.log('raw pkcs7 len:', rawPkcs7?.length)
+        console.log('has whitespace:', /\s/.test(rawPkcs7))
+        console.log('has -/_:', /[-_]/.test(rawPkcs7))
+
+        const normalizedPkcs7 = normalizeToStdBase64(rawPkcs7)
+
+        return normalizedPkcs7
     }
 }
 
