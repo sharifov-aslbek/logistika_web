@@ -57,7 +57,7 @@ const SignInForm = (props: SignInFormProps) => {
             console.log('📡 API Result:', success)
 
             if (success) {
-                navigate('/')
+                navigate('/dashboard/ecommerce')
             } else {
                 throw new Error('Login failed')
             }

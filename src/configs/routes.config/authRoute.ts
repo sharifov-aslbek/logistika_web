@@ -15,6 +15,7 @@ const authRoute: Routes = [
         component: lazy(() => import('@/views/auth-demo/SignUpDemoSplit')),
         authority: [],
     },
+
     // ... rest of your routes
 ]
 
