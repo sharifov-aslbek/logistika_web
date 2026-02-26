@@ -1,7 +1,7 @@
 // src/views/LandingPage/index.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import './LandingPage.css';
+import './landingpage.css';
 
 import HippoLogo from '@/assets/hippo-logo.png'; // Adjust path if needed
 
