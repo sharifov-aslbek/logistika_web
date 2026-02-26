@@ -45,40 +45,40 @@ const Split = ({ children, content, ...rest }: SplitProps) => {
                 <div className="w-full xl:max-w-[450px] px-8 max-w-[380px]">
                     {/* IF ROUTE IS /sign-in */}
                     {pathname.includes('sign-in') ? (
-                        <div className="mb-8">
-                            {/*<div className="mb-8">*/}
-                            {/*    <h3 className="mb-1">Welcome back!</h3>*/}
-                            {/*    <p>Please enter your credentials to sign in!</p>*/}
-                            {/*</div>*/}
-                            <SignInBase
-                                disableSubmit={false}
-                                signUpUrl="/sign-up"
-                                forgetPasswordUrl="/forgot-password"
-                            />
-                        </div>
-                    ) : /* ELSE IF ROUTE IS /sign-up */
-                    pathname.includes('sign-up') ? (
-                        <div className="mb-8">
-                            {/*<div className="mb-8">*/}
-                            {/*    <h3 className="mb-1">Sign Up</h3>*/}
-                            {/*    <p>And lets get started with your free trial</p>*/}
-                            {/*</div>*/}
-                            <SignUpBase
-                                disableSubmit={false}
-                                signInUrl="/sign-in"
-                            />
-                        </div>
-                    ) : (
-                        /* ELSE (Default for other routes) */
-                        <>
-                            <div className="mb-8">{content}</div>
-                            {children
-                                ? cloneElement(children as React.ReactElement, {
-                                      ...rest,
-                                  })
-                                : null}
-                        </>
-                    )}
+                            <div className="mb-8">
+                                {/*<div className="mb-8">*/}
+                                {/*    <h3 className="mb-1">Welcome back!</h3>*/}
+                                {/*    <p>Please enter your credentials to sign in!</p>*/}
+                                {/*</div>*/}
+                                <SignInBase
+                                    disableSubmit={false}
+                                    signUpUrl="/sign-up"
+                                    forgetPasswordUrl="/forgot-password"
+                                />
+                            </div>
+                        ) : /* ELSE IF ROUTE IS /sign-up */
+                        pathname.includes('sign-up') ? (
+                            <div className="mb-8">
+                                {/*<div className="mb-8">*/}
+                                {/*    <h3 className="mb-1">Sign Up</h3>*/}
+                                {/*    <p>And lets get started with your free trial</p>*/}
+                                {/*</div>*/}
+                                <SignUpBase
+                                    disableSubmit={false}
+                                    signInUrl="/sign-in"
+                                />
+                            </div>
+                        ) : (
+                            /* ELSE (Default for other routes) */
+                            <>
+                                <div className="mb-8">{content}</div>
+                                {children
+                                    ? cloneElement(children as React.ReactElement, {
+                                        ...rest,
+                                    })
+                                    : null}
+                            </>
+                        )}
                 </div>
             </div>
         </div>
