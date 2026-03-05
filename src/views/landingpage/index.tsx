@@ -109,11 +109,11 @@ const LandingPage = () => {
 
                     {/* NAV MENU WRAPPER - Toggles on Mobile */}
                     <div className={`nav-menu ${isMobileMenuOpen ? 'active' : ''}`}>
-                        <ul className="nav-links">
+                        {/* <ul className="nav-links">
                             <li><a href="#xizmatlar" onClick={() => setIsMobileMenuOpen(false)}>Bizning xizmatlar</a></li>
                             <li><a href="#jarayon" onClick={() => setIsMobileMenuOpen(false)}>Texnik yordam</a></li>
                             <li><Link to="/sign-in" onClick={() => setIsMobileMenuOpen(false)}>Platformaga kirish</Link></li>
-                        </ul>
+                        </ul> */}
                         <div className="nav-auth">
                             <Link to="/sign-in" className="btn btn-primary" onClick={() => setIsMobileMenuOpen(false)}>Mijoz bo'lish</Link>
                             <Link to="/sign-in" className="btn btn-outline" onClick={() => setIsMobileMenuOpen(false)}>Platformaga kirish</Link>
@@ -218,24 +218,24 @@ const LandingPage = () => {
                         <img src={HippoLogo} alt="Hippo Logo" />
                     </div>
                     <div className="footer-links">
-                        <h4>Kompaniya</h4>
+                        {/* <h4>Kompaniya</h4>
                         <ul>
                             <li><a href="#">Biz haqimizda</a></li>
                             <li><a href="#">Aloqa</a></li>
                             <li><a href="#">Blog</a></li>
-                        </ul>
+                        </ul> */}
                     </div>
                     <div className="footer-address">
-                        Toshkent, Shayxontohur tumani, Zafarobod ko'chasi, 7<br />
-                        Biz bilan bog'lanish: +998 78 122 63 63
+                        Toshkent, Olmazor tumani, Zafarobod ko'chasi, 7<br />
+                        Biz bilan bog'lanish: +998 93 172 61 61
                     </div>
                 </div>
                 <div className="container footer-bottom">
                     <p>© Hippo.uz 2026. Barcha huquqlar himoyalangan</p>
-                    <div className="footer-bottom-links">
+                    {/* <div className="footer-bottom-links">
                         <a href="#">Maxfiylik siyosati</a>
                         <a href="#">Foydalanish shartlari</a>
-                    </div>
+                    </div> */}
                 </div>
             </footer>
 
