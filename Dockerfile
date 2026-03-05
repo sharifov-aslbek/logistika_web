@@ -20,4 +20,4 @@ COPY --from=builder /app/build /app/build
 
 EXPOSE 80
 
-CMD ["serve", "/app/build", "-l", "80"]
+CMD ["serve", "-s", "/app/build", "-l", "80"]
