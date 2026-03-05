@@ -53,7 +53,7 @@
 .landing-page-wrapper .hamburger { display: none; font-size: 24px; cursor: pointer; z-index: 1001; user-select: none; }
 
 /* Hero Section */
-.landing-page-wrapper .hero { padding: 100px 0; text-align: center; }
+.landing-page-wrapper .hero { padding: 100px 0; text-align: center; height: 90vh; }
 .landing-page-wrapper .hero-content { max-width: 900px; margin: 0 auto; }
 .landing-page-wrapper .hero h1 { font-size: 56px; font-weight: 800; margin-bottom: 20px; line-height: 1.2; color: var(--text-dark); }
 .landing-page-wrapper .hero p { font-size: 20px; color: var(--text-gray); margin-bottom: 40px; max-width: 800px; margin-left: auto; margin-right: auto; }
@@ -181,6 +181,6 @@
     .landing-page-wrapper .footer-container { grid-template-columns: 1fr; text-align: center; gap: 30px; }
     .landing-page-wrapper .footer-logo { justify-content: center; }
     .landing-page-wrapper .footer-bottom { flex-direction: column; gap: 15px; padding-bottom: 20px; }
-    .landing-page-wrapper .footer-bottom-links { display: flex; flex-direction: column; gap: 10px; }
-    .landing-page-wrapper .footer-bottom-links a { margin: 0; }
+    .landing-page-wrapper .footer-bottom-links { display: flex; flex-direction: column; gap: 20px; }
+    .landing-page-wrapper .footer-bottom-links a { margin: 10px; }
 }
