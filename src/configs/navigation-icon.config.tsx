@@ -87,6 +87,7 @@ import {
     PiToolboxDuotone,
     PiCodeDuotone,
     PiPasswordDuotone,
+    
     // --- NEW IMPORTS FOR YOUR SIDEBAR ---
     PiFilePdfDuotone,
     PiFolderPlusDuotone,
@@ -98,6 +99,10 @@ import {
     PiUsersThreeDuotone,
     PiCopyDuotone,
     PiPenNibDuotone, // Added for Signers (Imzolovchilar)
+    
+    // --- NEW IMPORTS FOR PARENT HEADERS ---
+    PiBriefcaseDuotone, 
+    PiBankDuotone
 } from 'react-icons/pi'
 import type { JSX } from 'react'
 
@@ -215,9 +220,13 @@ const navigationIcon: NavigationIcons = {
     'hi-outline-user-add': <PiUserPlusDuotone />, // Unhandled Workers
     'hi-outline-book-open': <PiBookDuotone />,
     'hi-outline-document-text': <PiCopyDuotone />, // Shablon (Template)
+    'hi-outline-pencil-alt': <PiPenNibDuotone />,  // Signers
 
-    // --- NEW: IMZOLOVCHILAR (Signers) ---
-    'hi-outline-pencil-alt': <PiPenNibDuotone />,
+    // --- NEW: PARENT GROUP ICONS ---
+    'hi-outline-mail': <PiEnvelopeDuotone />,           // Pochta
+    'hi-outline-clipboard-list': <PiClipboardTextDuotone />, // Resurslar
+    'hi-outline-briefcase': <PiBriefcaseDuotone />,     // Ishchi paneli
+    'hi-outline-library': <PiBankDuotone />,            // Filialni boshqarish
 }
 
 export default navigationIcon
