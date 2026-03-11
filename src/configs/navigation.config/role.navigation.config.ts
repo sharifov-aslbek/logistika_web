@@ -73,6 +73,16 @@ const commonMailGroup: NavigationTree = {
             authority: [],
             subMenu: [],
         },
+        {
+            key: 'template',
+            path: '/template',
+            title: 'Shablon',
+            translateKey: 'menu.template',
+            icon: 'hi-outline-document-text',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
     ],
 }
 
@@ -86,16 +96,6 @@ const commonResourcesGroup: NavigationTree = {
     type: NAV_ITEM_TYPE_TITLE,
     authority: [],
     subMenu: [
-        {
-            key: 'template',
-            path: '/template',
-            title: 'Shablon',
-            translateKey: 'menu.template',
-            icon: 'hi-outline-document-text',
-            type: NAV_ITEM_TYPE_ITEM,
-            authority: [],
-            subMenu: [],
-        },
         {
             key: 'documentation',
             path: '/documentation',
