@@ -1,9 +1,14 @@
 // src/views/LandingPage/index.tsx
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link , useNavigate } from 'react-router-dom';
 import './landingpage.css';
 
 import HippoLogo from '@/assets/hippo-logo.png'; // Adjust path if needed
+
+
+
+
+
 
 const LandingPage = () => {
     // --- State ---
@@ -12,6 +17,7 @@ const LandingPage = () => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [formStatus, setFormStatus] = useState({ message: '', color: '' });
+    const navigate = useNavigate();
 
     // --- Refs for Scroll Animations ---
     const revealRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -99,6 +105,24 @@ const LandingPage = () => {
         }
     };
 
+    const handleAuthNavigate = () => {
+        const accountStorage = localStorage.getItem("account-storage");
+
+        if (!accountStorage) {
+            navigate("/sign-in");
+            return;
+        }
+
+        const parsed = JSON.parse(accountStorage);
+        const token = parsed?.state?.user?.token;
+
+        if (token) {
+            navigate("/dashboards/ecommerce");
+        } else {
+            navigate("/sign-in");
+        }
+    };
+
     return (
         <div className="landing-page-wrapper">
             <nav className="navbar">
@@ -115,8 +139,19 @@ const LandingPage = () => {
                             <li><Link to="/sign-in" onClick={() => setIsMobileMenuOpen(false)}>Platformaga kirish</Link></li>
                         </ul> */}
                         <div className="nav-auth">
-                            <Link to="/sign-in" className="btn btn-primary" onClick={() => setIsMobileMenuOpen(false)}>Mijoz bo'lish</Link>
-                            <Link to="/sign-in" className="btn btn-outline" onClick={() => setIsMobileMenuOpen(false)}>Platformaga kirish</Link>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleAuthNavigate}
+                            >
+                                Mijoz bo'lish
+                            </button>
+
+                            <button
+                                className="btn btn-outline"
+                                onClick={handleAuthNavigate}
+                            >
+                                Platformaga kirish
+                            </button>
                         </div>
                     </div>
 
