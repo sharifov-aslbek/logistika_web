@@ -10,11 +10,9 @@ import {
     HiXCircle,
 } from 'react-icons/hi'
 
-// --- Table Imports ---
 import Table from '@/components/ui/Table'
 const { Tr, Th, Td, THead, TBody } = Table
 
-// --- UI Components ---
 import Input from '@/components/ui/Input'
 import DatePicker from '@/components/ui/DatePicker'
 import Button from '@/components/ui/Button'
@@ -26,7 +24,6 @@ import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
 
-// --- Logic & Store ---
 import axios from 'axios'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -34,12 +31,10 @@ import { useMailStore } from '@/store/mailStore'
 import { useAccountStore } from '@/store/accountStore'
 import { useEImzoStore } from '@/store/eImzoStore'
 
-// --- Custom Components ---
 import MissingSign from '../../components/shared/missingsign'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
 
-// --- Helper: Status Tag ---
 const StatusTag = ({ row }: { row: any }) => {
     return (
         <Tag className="bg-amber-100 text-amber-600 border-0 rounded-full">
@@ -51,15 +46,9 @@ const StatusTag = ({ row }: { row: any }) => {
 const MailList = () => {
     const navigate = useNavigate()
 
-    // --- Stores ---
-    // Find the store section (around line 60-70) and replace with:
     const { mails, isLoading, getAllMails, exportExcel } = useMailStore()
+    const { init, loadKey, createPkcs7, error, loading: storeLoading } = useEImzoStore()
 
-// Corrected selectors for the E-IMZO store
-    const loadKey = useEImzoStore((state) => state.loadKey)
-    const createPkcs7 = useEImzoStore((state) => state.createPkcs7)
-
-    // --- FIXED TOKEN RETRIEVAL ---
     const token = useAccountStore((state: any) => state.user?.token) ||
         (() => {
             try {
@@ -67,23 +56,16 @@ const MailList = () => {
             } catch { return null }
         })()
 
-
-    // --- State ---
     const [filterSender, setFilterSender] = useState('')
     const [filterDate, setFilterDate] = useState<Date | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
     const [isExporting, setIsExporting] = useState(false)
-
-    // --- Selection State ---
     const [selectedIds, setSelectedIds] = useState<string[]>([])
-
-    // --- Send Modal States ---
     const [sendModalOpen, setSendModalOpen] = useState(false)
     const [mailToSend, setMailToSend] = useState<any>(null)
     const [selectedCert, setSelectedCert] = useState<any>(null)
     const [isSending, setIsSending] = useState(false)
 
-    // --- Bulk Result Modal ---
     const [bulkModalOpen, setBulkModalOpen] = useState(false)
     const [bulkResults, setBulkResults] = useState({
         total: 0,
@@ -93,23 +75,19 @@ const MailList = () => {
         isComplete: false,
     })
 
-    // --- Helpers ---
-    const getHeaders = () => {
-        if (!token) console.warn("Token not found in storage!")
+    useEffect(() => {
+        init()
+    }, [])
 
-        return {
-            Authorization: `Bearer ${token}`,
-            accept: '*/*',
-            'Content-Type': 'application/json',
-            'ngrok-skip-browser-warning': 'true'
-        }
-    }
+    const getHeaders = () => ({
+        Authorization: `Bearer ${token}`,
+        accept: '*/*',
+        'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true'
+    })
 
-    const formatDate = (date: Date | null) => {
-        return date ? dayjs(date).format('YYYY-MM-DD') : undefined
-    }
+    const formatDate = (date: Date | null) => date ? dayjs(date).format('YYYY-MM-DD') : undefined
 
-    // --- 1. Fetch Data ---
     const fetchData = async () => {
         const dateStr = formatDate(filterDate)
         await getAllMails({
@@ -124,13 +102,10 @@ const MailList = () => {
         fetchData()
     }, [filterDate])
 
-    // --- 2. Filter Logic ---
     const filteredMails = useMemo(() => {
         if (!mails) return []
         return mails.filter((item: any) => {
-            if (filterSender && !item.receiverName.toLowerCase().includes(filterSender.toLowerCase())) {
-                return false
-            }
+            if (filterSender && !item.receiverName.toLowerCase().includes(filterSender.toLowerCase())) return false
             if (searchQuery) {
                 const query = searchQuery.toLowerCase()
                 return item.uid?.toLowerCase().includes(query) || item.receiverName?.toLowerCase().includes(query)
@@ -139,22 +114,17 @@ const MailList = () => {
         })
     }, [mails, filterSender, searchQuery])
 
-    // --- 3. Selection Handlers ---
     const isAllSelected = filteredMails.length > 0 && selectedIds.length === filteredMails.length
 
     const handleSelectAll = () => {
-        if (isAllSelected) {
-            setSelectedIds([])
-        } else {
-            setSelectedIds(filteredMails.map((m: any) => m.uid))
-        }
+        if (isAllSelected) setSelectedIds([])
+        else setSelectedIds(filteredMails.map((m: any) => m.uid))
     }
 
     const handleSelectRow = (uid: string) => {
         setSelectedIds(prev => prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid])
     }
 
-    // --- 4. Export ---
     const handleExportExcel = async () => {
         setIsExporting(true)
         try {
@@ -177,7 +147,6 @@ const MailList = () => {
         }
     }
 
-    // --- 5. Modal Triggers ---
     const handleSingleSendClick = (row: any) => {
         setMailToSend(row)
         setSelectedCert(null)
@@ -190,64 +159,40 @@ const MailList = () => {
         setSendModalOpen(true)
     }
 
-    // --- 6. CORE LOGIC: Fetch Hash -> Sign -> Send ---
-
-    // Process a single mail document
     const processSingleDocument = async (uid: string, keyId: string) => {
         try {
             const hashRes = await axios.get(`${BASE_URL}/mail/hash/${uid}`, { headers: getHeaders() })
             const hash = hashRes.data.hash
-
             if (!hash) throw new Error("Hash topilmadi")
-
-            // Calls the function we got from useEImzoStore
             const signature = await createPkcs7(keyId, hash)
-
             if (!signature) throw new Error("Imzolab bo'lmadi")
-
-            await axios.post(
-                `${BASE_URL}/mail/sign/${uid}`,
-                { signature },
-                { headers: getHeaders() }
-            )
-
+            await axios.post(`${BASE_URL}/mail/sign/${uid}`, { signature }, { headers: getHeaders() })
             return true
         } catch (error) {
-            console.error(`Error processing UID ${uid}:`, error)
             return false
         }
     }
 
     const confirmSend = async () => {
-        if (!selectedCert) {
-            toast.push(<Notification type="warning">Kalit tanlanmadi</Notification>)
-            return
-        }
-
+        if (!selectedCert) return
         setIsSending(true)
-
         try {
-            // This line triggers the E-IMZO password prompt
-            // Make sure it calls 'loadKey' exactly as defined in the store
             const keyId = await loadKey(selectedCert)
-
             if (mailToSend) {
-                // --- Single Mode ---
                 const success = await processSingleDocument(mailToSend.uid, keyId)
                 if (success) {
-                    toast.push(<Notification type="success">Hujjat imzolandi va yuborildi</Notification>)
+                    toast.push(<Notification type="success">Hujjat yuborildi</Notification>)
                     setSendModalOpen(false)
                     fetchData()
                 } else {
                     toast.push(<Notification type="danger">Xatolik yuz berdi</Notification>)
                 }
             } else {
-                // --- Bulk Mode ---
                 setSendModalOpen(false)
                 startBulkProcessing(keyId)
             }
         } catch (error: any) {
-            toast.push(<Notification type="danger">Xatolik: {error.message || 'Imzolashda xatolik'}</Notification>)
+            toast.push(<Notification type="danger">Imzolashda xatolik</Notification>)
         } finally {
             setIsSending(false)
         }
@@ -255,34 +200,16 @@ const MailList = () => {
 
     const startBulkProcessing = async (activeKeyId: string) => {
         setBulkModalOpen(true)
-        setBulkResults({
-            total: selectedIds.length,
-            processed: 0,
-            success: 0,
-            failed: 0,
-            isComplete: false,
-        })
-
+        setBulkResults({ total: selectedIds.length, processed: 0, success: 0, failed: 0, isComplete: false })
         let sCount = 0
         let fCount = 0
-
-        // Loop through selected items sequentially
         for (let i = 0; i < selectedIds.length; i++) {
-            const uid = selectedIds[i]
-            const success = await processSingleDocument(uid, activeKeyId)
-
+            const success = await processSingleDocument(selectedIds[i], activeKeyId)
             if (success) sCount++
             else fCount++
-
-            setBulkResults((prev) => ({
-                ...prev,
-                processed: i + 1,
-                success: sCount,
-                failed: fCount,
-            }))
+            setBulkResults(prev => ({ ...prev, processed: i + 1, success: sCount, failed: fCount }))
         }
-
-        setBulkResults((prev) => ({ ...prev, isComplete: true }))
+        setBulkResults(prev => ({ ...prev, isComplete: true }))
         fetchData()
     }
 
@@ -290,7 +217,6 @@ const MailList = () => {
         <div className="p-4">
             <Card className="mb-4 border border-gray-200 shadow-sm rounded-xl">
                 <div className="flex flex-col lg:flex-row gap-4 justify-between items-end lg:items-center">
-                    {/* Filters */}
                     <div className="flex flex-wrap gap-4 items-center w-full lg:w-auto">
                         <div className="w-full sm:w-40">
                             <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Sana</label>
@@ -305,17 +231,14 @@ const MailList = () => {
                             <Input prefix={<HiOutlineSearch />} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} size="sm" placeholder="ID bo'yicha..." />
                         </div>
                     </div>
-
-                    {/* Actions */}
                     <div className="flex gap-2">
                         {selectedIds.length > 0 && (
-                            <Button variant="solid" color="emerald-600" size="sm" icon={<HiOutlinePaperAirplane className="rotate-90" />} onClick={handleBulkSendClick} className="animate-fade-in">
-                                Tanlanganlarni yuborish ({selectedIds.length})
+                            <Button variant="solid" color="emerald-600" size="sm" icon={<HiOutlinePaperAirplane className="rotate-90" />} onClick={handleBulkSendClick}>
+                                Yuborish ({selectedIds.length})
                             </Button>
                         )}
                         <Button variant="twoTone" color="blue-600" size="sm" icon={<HiOutlineDownload />} loading={isExporting} onClick={handleExportExcel}>Excel</Button>
                         <Button variant="solid" size="sm" icon={<HiOutlinePlus />} onClick={() => navigate('/mail/create-pdf')}>Yangi hujjat</Button>
-                        <Button variant="solid" size="sm" icon={<HiOutlinePlus />} onClick={() => navigate('/mail/create-registry')}>Yangi reyestr</Button>
                     </div>
                 </div>
             </Card>
@@ -325,7 +248,7 @@ const MailList = () => {
                     <THead>
                         <Tr>
                             <Th className="w-[50px] text-center">
-                                <input type="checkbox" className="cursor-pointer h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked={isAllSelected} onChange={handleSelectAll} />
+                                <input type="checkbox" className="cursor-pointer h-4 w-4 rounded border-gray-300" checked={isAllSelected} onChange={handleSelectAll} />
                             </Th>
                             <Th>ID</Th>
                             <Th>Qabul qiluvchi</Th>
@@ -337,18 +260,14 @@ const MailList = () => {
                     </THead>
                     <TBody>
                         {isLoading ? (
-                            <Tr>
-                                <Td colSpan={7} className="text-center py-10"><Spinner size="40px" /></Td>
-                            </Tr>
+                            <Tr><Td colSpan={7} className="text-center py-10"><Spinner size="40px" /></Td></Tr>
                         ) : filteredMails.length === 0 ? (
-                            <Tr>
-                                <Td colSpan={7} className="text-center py-6 text-gray-500">Ma'lumot topilmadi</Td>
-                            </Tr>
+                            <Tr><Td colSpan={7} className="text-center py-6 text-gray-500">Ma'lumot topilmadi</Td></Tr>
                         ) : (
                             filteredMails.map((row: any) => (
-                                <Tr key={row.uid} className={selectedIds.includes(row.uid) ? 'bg-blue-50 dark:bg-blue-900/10' : ''}>
+                                <Tr key={row.uid} className={selectedIds.includes(row.uid) ? 'bg-blue-50' : ''}>
                                     <Td className="text-center">
-                                        <input type="checkbox" className="cursor-pointer h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" checked={selectedIds.includes(row.uid)} onChange={() => handleSelectRow(row.uid)} />
+                                        <input type="checkbox" className="cursor-pointer h-4 w-4 rounded border-gray-300" checked={selectedIds.includes(row.uid)} onChange={() => handleSelectRow(row.uid)} />
                                     </Td>
                                     <Td className="font-mono text-xs w-[120px]">{row.uid}</Td>
                                     <Td>{row.receiverName}</Td>
@@ -372,40 +291,48 @@ const MailList = () => {
                 </Table>
             </Card>
 
-            {/* --- Signature Dialog --- */}
-            <Dialog isOpen={sendModalOpen} onClose={() => setSendModalOpen(false)} title={mailToSend ? 'Hujjatni yuborish' : `Tanlanganlarni yuborish (${selectedIds.length})`} width={500}>
-                <div className="flex flex-col gap-6 pt-4">
-                    <p className="text-gray-600">
-                        {mailToSend ? `Qabul qiluvchi: ${mailToSend.receiverName}` : `Jami tanlangan hujjatlar: ${selectedIds.length} ta`}
-                    </p>
-                    <MissingSign onSignClicked={setSelectedCert} disabled={isSending} />
-                    <Button block variant="solid" size="lg" loading={isSending} disabled={!selectedCert} onClick={confirmSend}>
-                        {mailToSend ? 'Yuborish' : 'Barchasini Yuborish'}
-                    </Button>
+            <Dialog isOpen={sendModalOpen} onClose={() => setSendModalOpen(false)} title="Hujjatni yuborish" width={500}>
+                <div className="pt-4">
+                    {error === 'AGENT_NOT_FOUND' ? (
+                        <div className="flex flex-col items-center text-center p-4">
+                            <HiXCircle className="text-red-500 text-5xl mb-4" />
+                            <h3 className="text-lg font-bold">E-IMZO topilmadi</h3>
+                            <p className="text-gray-500 text-sm mt-2 mb-6">Imzolash uchun kompyuteringizda E-IMZO moduli yoniq bo'lishi shart.</p>
+                            <div className="flex flex-col gap-3 w-full">
+                                <Button block variant="solid" color="blue-600" onClick={() => window.open('https://e-imzo.uz/help/install')}>Dasturni yuklash</Button>
+                                <Button block variant="plain" onClick={() => init()} loading={storeLoading}>Qayta tekshirish</Button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-6">
+                            <p className="text-gray-600 text-sm italic">{mailToSend ? `ID: ${mailToSend.uid}` : `${selectedIds.length} ta hujjat`}</p>
+                            <MissingSign onSignClicked={setSelectedCert} disabled={isSending} />
+                            <Button block variant="solid" size="lg" loading={isSending || storeLoading} disabled={!selectedCert} onClick={confirmSend}>
+                                {mailToSend ? 'Yuborish' : 'Barchasini yuborish'}
+                            </Button>
+                        </div>
+                    )}
                 </div>
             </Dialog>
 
-            {/* --- Bulk Process Result Dialog --- */}
-            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title="Yuborish jarayoni" width={500} closable={bulkResults.isComplete}>
+            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title="Natija" width={500} closable={bulkResults.isComplete}>
                 <div className="flex flex-col gap-4 py-4 items-center text-center">
                     {!bulkResults.isComplete ? (
                         <div className="flex flex-col items-center">
                             <Spinner size="40px" className="mb-4" />
-                            <h4 className="text-lg font-bold text-gray-700">Yuborilmoqda...</h4>
                             <p className="text-gray-500">{bulkResults.processed} / {bulkResults.total}</p>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center w-full">
-                            <div className="mb-4 text-emerald-500 text-5xl"><HiCheckCircle /></div>
-                            <h4 className="text-xl font-bold mb-6">Jarayon yakunlandi</h4>
+                            <HiCheckCircle className="text-emerald-500 text-5xl mb-4" />
                             <div className="grid grid-cols-2 gap-4 w-full">
-                                <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                                <div className="bg-green-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-green-600">{bulkResults.success}</div>
-                                    <div className="text-sm text-green-700">Muvaffaqiyatli</div>
+                                    <div className="text-sm">Muvaffaqiyatli</div>
                                 </div>
-                                <div className="bg-red-50 p-4 rounded-lg border border-red-100">
+                                <div className="bg-red-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-red-600">{bulkResults.failed}</div>
-                                    <div className="text-sm text-red-700">Yuborilmadi</div>
+                                    <div className="text-sm">Xato</div>
                                 </div>
                             </div>
                             <Button className="mt-6 w-full" variant="solid" onClick={() => { setBulkModalOpen(false); setSelectedIds([]) }}>Yopish</Button>

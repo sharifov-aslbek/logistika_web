@@ -7,17 +7,13 @@ const KEYS = {
     PROD: '8F1A67D24031765D8348BBCD8CB99E58EB64D2210CE38032A8031A1E11EB8F8BE6A6D43999E2C9E21DD5AA824CB133115E6A3E40B7E948E2357399DEFB63E1FD',
 }
 
-// 2. DETECT ENVIRONMENT
-const isSecure = window.location.protocol === 'https:'
 const hostname = window.location.hostname
 
-// 3. EXPORT CONFIG
-export const EIMZO_URL = isSecure
-    ? 'wss://127.0.0.1:64443/service/cryptapi'
-    : 'ws://127.0.0.1:64646/service/cryptapi'
+// Check if we are on the production domain
+const isProd = hostname === 'xathippo.uz' || hostname === 'www.xathippo.uz'
+
+export const EIMZO_URL = 'wss://127.0.0.1:64443/service/cryptapi'
 
 export const EIMZO_HOST = hostname
 
-export const EIMZO_API_KEY = hostname.includes('xat.hippo.uz')
-    ? KEYS.PROD
-    : KEYS.DEV
+export const EIMZO_API_KEY = isProd ? KEYS.PROD : KEYS.DEV
