@@ -179,7 +179,7 @@ const MailEdit = () => {
         const payload = {
             receiverName: form.recipient,
             receiverAddress: form.address,
-            pagesCount: Number(form.pagesCount),
+            // pagesCount: Number(form.pagesCount),
             regionId: Number(form.region || 0),
             areaId: Number(form.area || 0),
         }
@@ -287,7 +287,7 @@ const MailEdit = () => {
                     </div>
 
                     {/* Pages Count */}
-                    <div>
+                    {/* <div>
                         <label className="block text-sm font-semibold mb-2">
                             Sahifalar soni
                         </label>
@@ -303,7 +303,7 @@ const MailEdit = () => {
                             }
                             className="w-full md:w-1/3"
                         />
-                    </div>
+                    </div> */}
 
                     {/* Buttons */}
                     <div className="flex justify-end gap-4 mt-6">

@@ -57,6 +57,10 @@ const CreateRegistry = () => {
     const [excelData, setExcelData] = useState<any[]>([])
     const [validationErrors, setValidationErrors] = useState<string[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
+    
+    // ✨ NEW: Modal State for API Result
+    const [isModalOpen, setIsModalOpen] = useState(false)
+    const [apiResult, setApiResult] = useState<any>(null)
 
     // --- 1. Fetch Templates on Mount ---
     useEffect(() => {
@@ -170,6 +174,20 @@ const CreateRegistry = () => {
                     const worksheet = workbook.Sheets[sheetName]
                     const jsonData = XLSX.utils.sheet_to_json(worksheet)
 
+                    // ✨ NEW: Filter header rows to count actual data rows correctly
+                    const cleanRowsForLimitCheck = jsonData.filter(
+                        (row: any) =>
+                            row.receiver !== 'Получатель' && row.receiver !== 'Receiver',
+                    )
+
+                    // ✨ NEW: Enforce maximum 200 records limit
+                    if (cleanRowsForLimitCheck.length > 200) {
+                        setValidationErrors([
+                            'Excel file contains more than 200 records. Maximum allowed is 200.',
+                        ])
+                        return
+                    }
+
                     const errors = validateExcelData(jsonData)
 
                     if (errors.length > 0) {
@@ -206,11 +224,18 @@ const CreateRegistry = () => {
             mails: payloadMails,
         }
 
+        // ✨ NEW: Immediate notification that process started
+        toast.push(
+          <Notification type="info">
+  Jo'natildi, yaratilmoqda. Tayyor bo‘lgach sizga xabar beramiz.
+</Notification>
+        )
+
         try {
             console.log('🚀 Sending Payload:', payload)
 
             const response = await axios.post(
-                `${BASE_URL}/registry/queue-mails`,
+                `${BASE_URL}/registry/process-mails`,
                 payload,
                 {
                     headers: {
@@ -222,12 +247,16 @@ const CreateRegistry = () => {
             )
 
             if (response.status === 200 || response.status === 201) {
-                toast.push(
-                    <Notification type="success">
-                        {payloadMails.length} ta xat navbatga qo'shildi!
-                    </Notification>,
-                )
-                navigate('/mail/draftmails')
+                // ✨ NEW: Prepare modal data and open modal instead of immediate navigation
+                const resultData = response.data?.data || {}
+                setApiResult({
+                    message: response.data?.message || 'Amaliyot muvaffaqiyatli yakunlandi',
+                    totalProcessed: resultData.totalProcessed || 0,
+                    successCount: resultData.successCount || 0,
+                    errorCount: resultData.errorCount || 0,
+                    errorMessages: resultData.errorMessages || [],
+                })
+                setIsModalOpen(true)
             }
         } catch (error: any) {
             console.error('API Error:', error)
@@ -241,8 +270,14 @@ const CreateRegistry = () => {
         }
     }
 
+    // ✨ NEW: Handle closing modal and executing navigation
+    const handleCloseModal = () => {
+        setIsModalOpen(false)
+        navigate('/mail/draftmails')
+    }
+
     return (
-        <div className="w-full px-5 py-10">
+        <div className="w-full px-5 py-10 relative">
             <div className="mb-8">
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">
                     {t('registry.title', 'Hujjat Reyestri Yaratish')}
@@ -375,13 +410,14 @@ const CreateRegistry = () => {
                                     >
                                         Bekor qilish
                                     </Button>
+                                    {/* ✨ FIX: Removed loading prop, kept disabled to prevent multiple submissions */}
                                     <Button
                                         variant="solid"
                                         size="lg"
                                         className="min-w-[160px]"
                                         type="submit"
-                                        loading={isSubmitting}
                                         disabled={
+                                            isSubmitting ||
                                             validationErrors.length > 0 ||
                                             !values.file ||
                                             !values.templateName
@@ -395,6 +431,65 @@ const CreateRegistry = () => {
                     </Form>
                 )}
             </Formik>
+
+            {/* ✨ NEW: Results Modal overlay */}
+            {isModalOpen && apiResult && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
+                    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                            <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100">
+                                Qayta ishlash natijasi
+                            </h2>
+                        </div>
+                        
+                        <div className="p-6 overflow-y-auto flex-1">
+                            <p className="text-gray-700 dark:text-gray-300 mb-6 font-medium">
+                                {apiResult.message}
+                            </p>
+                            
+                            <div className="grid grid-cols-3 gap-4 mb-6 text-center">
+                                <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">Jami</div>
+                                    <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                                        {apiResult.totalProcessed}
+                                    </div>
+                                </div>
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">Muvaffaqiyatli</div>
+                                    <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
+                                        {apiResult.successCount}
+                                    </div>
+                                </div>
+                                <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">Xatolik</div>
+                                    <div className="text-xl font-bold text-red-600 dark:text-red-400">
+                                        {apiResult.errorCount}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {apiResult.errorMessages && apiResult.errorMessages.length > 0 && (
+                                <div className="mt-4">
+                                    <div className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">
+                                        Xatoliklar ro'yxati:
+                                    </div>
+                                    <ul className="list-disc pl-5 space-y-1 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 p-4 rounded-lg">
+                                        {apiResult.errorMessages.map((msg: string, idx: number) => (
+                                            <li key={idx}>{msg}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+                            <Button variant="solid" onClick={handleCloseModal}>
+                                Qoralamalarga o'tish
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
