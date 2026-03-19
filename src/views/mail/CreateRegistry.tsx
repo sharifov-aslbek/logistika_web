@@ -443,9 +443,9 @@ const CreateRegistry = () => {
                         </div>
                         
                         <div className="p-6 overflow-y-auto flex-1">
-                            <p className="text-gray-700 dark:text-gray-300 mb-6 font-medium">
+                            {/* <p className="text-gray-700 dark:text-gray-300 mb-6 font-medium">
                                 {apiResult.message}
-                            </p>
+                            </p> */}
                             
                             <div className="grid grid-cols-3 gap-4 mb-6 text-center">
                                 <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
@@ -484,7 +484,7 @@ const CreateRegistry = () => {
 
                         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
                             <Button variant="solid" onClick={handleCloseModal}>
-                                Qoralamalarga o'tish
+                                Yaratilganlarga o'tish
                             </Button>
                         </div>
                     </div>
