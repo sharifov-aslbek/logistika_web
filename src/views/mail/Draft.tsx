@@ -5,6 +5,7 @@ import {
     HiOutlinePlus,
     HiOutlinePaperAirplane,
     HiOutlinePencil,
+    HiOutlineTrash,
     HiOutlineDownload,
     HiCheckCircle,
     HiXCircle,
@@ -46,7 +47,7 @@ const StatusTag = ({ row }: { row: any }) => {
 const MailList = () => {
     const navigate = useNavigate()
 
-    const { mails, isLoading, getAllMails, exportExcel } = useMailStore()
+    const { mails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
     const { init, loadKey, createPkcs7, error, loading: storeLoading } = useEImzoStore()
 
     const token = useAccountStore((state: any) => state.user?.token) ||
@@ -74,6 +75,9 @@ const MailList = () => {
         failed: 0,
         isComplete: false,
     })
+    const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+    const [mailToDelete, setMailToDelete] = useState<any>(null)
+    const [isDeleting, setIsDeleting] = useState(false)
 
     useEffect(() => {
         init()
@@ -157,6 +161,29 @@ const MailList = () => {
         setMailToSend(null)
         setSelectedCert(null)
         setSendModalOpen(true)
+    }
+
+    const openDeleteDialog = (row: any) => {
+        setMailToDelete(row)
+        setDeleteModalOpen(true)
+    }
+
+    const handleDeleteDraft = async () => {
+        if (!mailToDelete?.uid) return
+        setIsDeleting(true)
+        try {
+            const success = await deleteMail(mailToDelete.uid)
+            if (success) {
+                setSelectedIds((prev) => prev.filter((id) => id !== mailToDelete.uid))
+                setDeleteModalOpen(false)
+                setMailToDelete(null)
+                toast.push(<Notification type="success">Hujjat muvaffaqiyatli o&apos;chirildi</Notification>)
+            } else {
+                toast.push(<Notification type="danger">O&apos;chirishda xatolik yuz berdi</Notification>)
+            }
+        } finally {
+            setIsDeleting(false)
+        }
     }
 
     const processSingleDocument = async (uid: string, keyId: string) => {
@@ -270,7 +297,18 @@ const MailList = () => {
                                         <input type="checkbox" className="cursor-pointer h-4 w-4 rounded border-gray-300" checked={selectedIds.includes(row.uid)} onChange={() => handleSelectRow(row.uid)} />
                                     </Td>
                                     <Td className="font-mono text-xs w-[120px]">{row.uid}</Td>
-                                    <Td>{row.receiverName}</Td>
+                                    <Td>
+                                        <span
+                                            className="font-medium text-blue-600 hover:underline cursor-pointer"
+                                            onClick={() =>
+                                                navigate(
+                                                    `/mail/viewer/${row.uid}`,
+                                                )
+                                            }
+                                        >
+                                            {row.receiverName}
+                                        </span>
+                                    </Td>
                                     <Td className="text-xs">{row.receiverAddress}</Td>
                                     <Td className="text-xs">{dayjs(row.createdAt).format('DD.MM.YYYY')}</Td>
                                     <Td><StatusTag row={row} /></Td>
@@ -281,6 +319,9 @@ const MailList = () => {
                                             </Tooltip>
                                             <Tooltip title="Tahrirlash">
                                                 <Button size="xs" variant="twoTone" icon={<HiOutlinePencil />} onClick={() => navigate(`/mail/edit/${row.uid}`)} />
+                                            </Tooltip>
+                                            <Tooltip title="O'chirish">
+                                                <Button size="xs" variant="twoTone" color="red-600" icon={<HiOutlineTrash />} onClick={() => openDeleteDialog(row)} />
                                             </Tooltip>
                                         </div>
                                     </Td>
@@ -312,6 +353,25 @@ const MailList = () => {
                             </Button>
                         </div>
                     )}
+                </div>
+            </Dialog>
+
+            <Dialog isOpen={deleteModalOpen} onClose={() => setDeleteModalOpen(false)} title="Qoralamani o'chirish" width={420}>
+                <div className="mt-4">
+                    <p className="text-gray-600 mb-2">
+                        Haqiqatan ham <strong>{mailToDelete?.receiverName || mailToDelete?.uid}</strong> qoralamasini o&apos;chirmoqchimisiz?
+                    </p>
+                    <p className="text-sm text-gray-400 mb-6">
+                        Bu amal mail yozuvini va unga bog&apos;langan PDF faylni o&apos;chiradi. Amalni ortga qaytarib bo&apos;lmaydi.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="plain" onClick={() => setDeleteModalOpen(false)} disabled={isDeleting}>
+                            Bekor qilish
+                        </Button>
+                        <Button variant="solid" color="red-600" onClick={handleDeleteDraft} loading={isDeleting}>
+                            Ha, o&apos;chirish
+                        </Button>
+                    </div>
                 </div>
             </Dialog>
 
