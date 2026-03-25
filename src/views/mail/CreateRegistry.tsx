@@ -24,6 +24,8 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
 const ROLE_WORKER = 10
 const ROLE_BRANCH_DIRECTOR = 20
 const ROLE_ADMIN = 30
+const EXCEL_ACCEPT =
+    '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 // --- HELPER: Convert Excel Serial Date ---
 const formatExcelDate = (serial: number | string) => {
@@ -56,11 +58,39 @@ const CreateRegistry = () => {
     // --- Local State ---
     const [excelData, setExcelData] = useState<any[]>([])
     const [validationErrors, setValidationErrors] = useState<string[]>([])
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     
     // ✨ NEW: Modal State for API Result
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [apiResult, setApiResult] = useState<any>(null)
+
+    const isExcelFile = (file: File) => {
+        const fileName = file.name.toLowerCase()
+        return (
+            fileName.endsWith('.xlsx') ||
+            fileName.endsWith('.xls') ||
+            file.type === 'application/vnd.ms-excel' ||
+            file.type ===
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+    }
+
+    const validateRegistryFile = (newFiles: FileList | null) => {
+        if (!newFiles || newFiles.length === 0) {
+            return 'Excel fayl tanlash shart'
+        }
+
+        if (newFiles.length > 1) {
+            return 'Faqat bitta Excel fayl yuklash mumkin'
+        }
+
+        if (!isExcelFile(newFiles[0])) {
+            return 'Faqat Excel (.xlsx, .xls) fayl yuklash mumkin'
+        }
+
+        return true
+    }
 
     // --- 1. Fetch Templates on Mount ---
     useEffect(() => {
@@ -163,6 +193,14 @@ const CreateRegistry = () => {
 
         if (files && files.length > 0) {
             const file = files[0]
+
+            if (!isExcelFile(file)) {
+                setUploadedFiles([])
+                form.setFieldValue('file', null)
+                return
+            }
+
+            setUploadedFiles([file])
             form.setFieldValue('file', file)
 
             const reader = new FileReader()
@@ -199,6 +237,13 @@ const CreateRegistry = () => {
             }
             reader.readAsBinaryString(file)
         }
+    }
+
+    const handleFileRemove = (form: any) => {
+        setUploadedFiles([])
+        setExcelData([])
+        setValidationErrors([])
+        form.setFieldValue('file', null)
     }
 
     // --- 5. API Submit Handler ---
@@ -344,14 +389,22 @@ const CreateRegistry = () => {
                                     <Field name="file">
                                         {({ form }: any) => (
                                             <Upload
+                                                accept={EXCEL_ACCEPT}
+                                                beforeUpload={validateRegistryFile}
                                                 draggable
                                                 className="cursor-pointer bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                                                fileList={uploadedFiles}
+                                                multiple={false}
                                                 onChange={(files) =>
                                                     handleFileUpload(
                                                         files,
                                                         form,
                                                     )
                                                 }
+                                                onFileRemove={() =>
+                                                    handleFileRemove(form)
+                                                }
+                                                uploadLimit={1}
                                             >
                                                 <div className="flex flex-col items-center justify-center py-8">
                                                     <div className="mb-4 text-indigo-500 text-5xl">
