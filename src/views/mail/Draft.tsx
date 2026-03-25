@@ -68,6 +68,7 @@ const MailList = () => {
     const [isSending, setIsSending] = useState(false)
 
     const [bulkModalOpen, setBulkModalOpen] = useState(false)
+    const [bulkActionType, setBulkActionType] = useState<'send' | 'delete'>('send')
     const [bulkResults, setBulkResults] = useState({
         total: 0,
         processed: 0,
@@ -75,6 +76,7 @@ const MailList = () => {
         failed: 0,
         isComplete: false,
     })
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [mailToDelete, setMailToDelete] = useState<any>(null)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -163,6 +165,10 @@ const MailList = () => {
         setSendModalOpen(true)
     }
 
+    const handleBulkDeleteClick = () => {
+        setBulkDeleteModalOpen(true)
+    }
+
     const openDeleteDialog = (row: any) => {
         setMailToDelete(row)
         setDeleteModalOpen(true)
@@ -226,6 +232,7 @@ const MailList = () => {
     }
 
     const startBulkProcessing = async (activeKeyId: string) => {
+        setBulkActionType('send')
         setBulkModalOpen(true)
         setBulkResults({ total: selectedIds.length, processed: 0, success: 0, failed: 0, isComplete: false })
         let sCount = 0
@@ -238,6 +245,41 @@ const MailList = () => {
         }
         setBulkResults(prev => ({ ...prev, isComplete: true }))
         fetchData()
+    }
+
+    const startBulkDeleteProcessing = async () => {
+        const idsToDelete = [...selectedIds]
+        if (idsToDelete.length === 0) return
+
+        setBulkDeleteModalOpen(false)
+        setBulkActionType('delete')
+        setBulkModalOpen(true)
+        setBulkResults({ total: idsToDelete.length, processed: 0, success: 0, failed: 0, isComplete: false })
+
+        let sCount = 0
+        let fCount = 0
+
+        for (let i = 0; i < idsToDelete.length; i++) {
+            const uid = idsToDelete[i]
+            const success = await deleteMail(uid)
+
+            if (success) {
+                sCount++
+                setSelectedIds((prev) => prev.filter((id) => id !== uid))
+            } else {
+                fCount++
+            }
+
+            setBulkResults((prev) => ({
+                ...prev,
+                processed: i + 1,
+                success: sCount,
+                failed: fCount,
+            }))
+        }
+
+        setBulkResults((prev) => ({ ...prev, isComplete: true }))
+        setSelectedIds([])
     }
 
     return (
@@ -262,6 +304,11 @@ const MailList = () => {
                         {selectedIds.length > 0 && (
                             <Button variant="solid" color="emerald-600" size="sm" icon={<HiOutlinePaperAirplane className="rotate-90" />} onClick={handleBulkSendClick}>
                                 Yuborish ({selectedIds.length})
+                            </Button>
+                        )}
+                        {selectedIds.length > 0 && (
+                            <Button variant="solid" color="red-600" size="sm" icon={<HiOutlineTrash />} onClick={handleBulkDeleteClick}>
+                                O'chirish ({selectedIds.length})
                             </Button>
                         )}
                         <Button variant="twoTone" color="blue-600" size="sm" icon={<HiOutlineDownload />} loading={isExporting} onClick={handleExportExcel}>Excel</Button>
@@ -375,7 +422,26 @@ const MailList = () => {
                 </div>
             </Dialog>
 
-            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title="Natija" width={500} closable={bulkResults.isComplete}>
+            <Dialog isOpen={bulkDeleteModalOpen} onClose={() => setBulkDeleteModalOpen(false)} title="Qoralamalarni o'chirish" width={420}>
+                <div className="mt-4">
+                    <p className="text-gray-600 mb-2">
+                        Haqiqatan ham <strong>{selectedIds.length} ta</strong> qoralamani o&apos;chirmoqchimisiz?
+                    </p>
+                    <p className="text-sm text-gray-400 mb-6">
+                        Bu amal tanlangan mail yozuvlari va ularga bog&apos;langan PDF fayllarni o&apos;chiradi. Amalni ortga qaytarib bo&apos;lmaydi.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="plain" onClick={() => setBulkDeleteModalOpen(false)}>
+                            Bekor qilish
+                        </Button>
+                        <Button variant="solid" color="red-600" onClick={startBulkDeleteProcessing}>
+                            Ha, barchasini o&apos;chirish
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title={bulkActionType === 'delete' ? "O'chirish natijasi" : 'Natija'} width={500} closable={bulkResults.isComplete}>
                 <div className="flex flex-col gap-4 py-4 items-center text-center">
                     {!bulkResults.isComplete ? (
                         <div className="flex flex-col items-center">
@@ -388,7 +454,7 @@ const MailList = () => {
                             <div className="grid grid-cols-2 gap-4 w-full">
                                 <div className="bg-green-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-green-600">{bulkResults.success}</div>
-                                    <div className="text-sm">Muvaffaqiyatli</div>
+                                    <div className="text-sm">{bulkActionType === 'delete' ? "O'chirildi" : 'Muvaffaqiyatli'}</div>
                                 </div>
                                 <div className="bg-red-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-red-600">{bulkResults.failed}</div>
