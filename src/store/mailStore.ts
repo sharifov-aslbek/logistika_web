@@ -148,11 +148,34 @@ export const useMailStore = create<MailState>((set, get) => ({
 
             if (responseData && Array.isArray(responseData)) {
                 set({ mails: responseData, totalMails: responseData.length })
+            } else if (responseData?.items && Array.isArray(responseData.items)) {
+                set({
+                    mails: responseData.items,
+                    totalMails:
+                        responseData.totalCount ||
+                        responseData.total ||
+                        responseData.items.length,
+                })
+            } else if (
+                responseData?.data?.items &&
+                Array.isArray(responseData.data.items)
+            ) {
+                set({
+                    mails: responseData.data.items,
+                    totalMails:
+                        responseData.totalCount ||
+                        responseData.data.totalCount ||
+                        responseData.total ||
+                        responseData.data.total ||
+                        responseData.data.items.length,
+                })
             } else if (responseData?.data && Array.isArray(responseData.data)) {
                 set({
                     mails: responseData.data,
                     totalMails:
-                        responseData.totalCount || responseData.total || 0,
+                        responseData.totalCount ||
+                        responseData.total ||
+                        responseData.data.length,
                 })
             } else {
                 set({ mails: [], totalMails: 0 })

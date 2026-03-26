@@ -26,15 +26,111 @@ const ROLE_BRANCH_DIRECTOR = 20
 const ROLE_ADMIN = 30
 const EXCEL_ACCEPT =
     '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+const HEADER_ALIASES: Record<string, string> = {
+    receiver: 'receiver',
+    receiver_name: 'receiver',
+    qabul_qiluvchi: 'receiver',
+    oluvchi: 'receiver',
+    получатель: 'receiver',
+    address: 'address',
+    receiver_address: 'address',
+    manzil: 'address',
+    адрес: 'address',
+    region: 'region',
+    region_id: 'region',
+    viloyat: 'region',
+    область: 'region',
+    area: 'area',
+    area_id: 'area',
+    tuman: 'area',
+    tuman_id: 'area',
+    район: 'area',
+    branch_id: 'branch_id',
+    branchid: 'branch_id',
+    branch_id_: 'branch_id',
+    branch: 'branch_id',
+    filial: 'branch_id',
+    filial_id: 'branch_id',
+}
 
-// --- HELPER: Convert Excel Serial Date ---
-const formatExcelDate = (serial: number | string) => {
-    if (typeof serial === 'string') return serial
-    const date = new Date(Math.round((serial - 25569) * 86400 * 1000))
-    const d = String(date.getDate()).padStart(2, '0')
-    const m = String(date.getMonth() + 1).padStart(2, '0')
-    const y = date.getFullYear()
-    return `${d}.${m}.${y}`
+const normalizeHeaderKey = (header: string) => {
+    const normalized = header
+        .trim()
+        .toLowerCase()
+        .replace(/[\s-]+/g, '_')
+        .replace(/[()]/g, '')
+        .replace(/__+/g, '_')
+
+    return HEADER_ALIASES[normalized] || normalized
+}
+
+const normalizeExcelRow = (row: Record<string, any>) => {
+    return Object.entries(row).reduce(
+        (acc, [key, value]) => {
+            const normalizedKey = normalizeHeaderKey(String(key))
+            if (normalizedKey) {
+                acc[normalizedKey] = value
+            }
+            return acc
+        },
+        {} as Record<string, any>,
+    )
+}
+
+const getRequiredHeaders = (role: number) => {
+    const requiredHeaders = ['receiver', 'address', 'region', 'area']
+
+    if ([ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN].includes(role)) {
+        requiredHeaders.push('branch_id')
+    }
+
+    return requiredHeaders
+}
+
+const findRegistryHeaderRow = (
+    worksheet: XLSX.WorkSheet,
+    requiredHeaders: string[],
+) => {
+    const rows = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: false,
+        defval: '',
+    }) as string[][]
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        const normalizedRow = (rows[rowIndex] || [])
+            .slice(2)
+            .map((cell) => normalizeHeaderKey(String(cell || '')))
+
+        const hasAllHeaders = requiredHeaders.every((header) =>
+            normalizedRow.includes(header),
+        )
+
+        if (hasAllHeaders) {
+            return rowIndex
+        }
+    }
+
+    return -1
+}
+
+const getRegistrySheetRange = (
+    worksheet: XLSX.WorkSheet,
+    headerRowIndex: number,
+) => {
+    const ref = worksheet['!ref']
+
+    if (!ref) {
+        return undefined
+    }
+
+    const range = XLSX.utils.decode_range(ref)
+
+    // Ignore the first 2 Excel columns (A and B). Registry data starts at C.
+    range.s.c = Math.max(range.s.c, 2)
+    range.s.r = Math.max(range.s.r, headerRowIndex)
+
+    return XLSX.utils.encode_range(range)
 }
 
 const CreateRegistry = () => {
@@ -107,13 +203,7 @@ const CreateRegistry = () => {
     const validateExcelData = (data: any[]) => {
         const errors: string[] = []
 
-        // Base required columns
-        const requiredFields = ['receiver', 'address', 'region', 'area']
-
-        // If role is 10, 20, or 30, 'branch_id' is mandatory
-        if ([ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN].includes(role)) {
-            requiredFields.push('branch_id')
-        }
+        const requiredFields = getRequiredHeaders(role)
 
         data.forEach((row, index) => {
             const rowNumber = index + 2 // +2 because Excel starts at 1 and header is 1
@@ -155,17 +245,8 @@ const CreateRegistry = () => {
             // Process "rest" columns for Content JSON
             const contentObj: any = {}
             Object.keys(rest).forEach((key) => {
-                let value = rest[key]
-                // Handle Excel dates
-                const dateKeys = [
-                    'document_date',
-                    'print_date',
-                    'date_of_deposit',
-                ]
-                if (dateKeys.includes(key) && typeof value === 'number') {
-                    value = formatExcelDate(value)
-                }
-                contentObj[key] = String(value)
+                const value = rest[key]
+                contentObj[key] = String(value ?? '')
             })
 
             // Return exact shape for /queue-mails endpoint
@@ -210,10 +291,54 @@ const CreateRegistry = () => {
                     const workbook = XLSX.read(data, { type: 'binary' })
                     const sheetName = workbook.SheetNames[0]
                     const worksheet = workbook.Sheets[sheetName]
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet)
+                    const requiredHeaders = getRequiredHeaders(role)
+                    const headerRowIndex = findRegistryHeaderRow(
+                        worksheet,
+                        requiredHeaders,
+                    )
+
+                    if (headerRowIndex === -1) {
+                        setValidationErrors([
+                            `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}`,
+                            "Eslatma: import A va B ustunlarini o'qimaydi, ma'lumot C ustundan boshlanishi kerak.",
+                        ])
+                        return
+                    }
+
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                        defval: '',
+                        raw: false,
+                        range: getRegistrySheetRange(
+                            worksheet,
+                            headerRowIndex,
+                        ),
+                    })
+                    const normalizedData = jsonData.map((row: any) =>
+                        normalizeExcelRow(row),
+                    )
+
+                    if (normalizedData.length === 0) {
+                        setValidationErrors([
+                            "Excel faylda o'qiladigan ma'lumot topilmadi",
+                        ])
+                        return
+                    }
+
+                    const detectedHeaders = Object.keys(normalizedData[0] || {})
+                    const missingHeaders = requiredHeaders.filter(
+                        (header) => !detectedHeaders.includes(header),
+                    )
+
+                    if (missingHeaders.length > 0) {
+                        setValidationErrors([
+                            `Excel ustunlari mos emas. Kerakli ustunlar: ${requiredHeaders.join(', ')}`,
+                            `Topilmagan ustunlar: ${missingHeaders.join(', ')}`,
+                        ])
+                        return
+                    }
 
                     // ✨ NEW: Filter header rows to count actual data rows correctly
-                    const cleanRowsForLimitCheck = jsonData.filter(
+                    const cleanRowsForLimitCheck = normalizedData.filter(
                         (row: any) =>
                             row.receiver !== 'Получатель' && row.receiver !== 'Receiver',
                     )
@@ -226,12 +351,12 @@ const CreateRegistry = () => {
                         return
                     }
 
-                    const errors = validateExcelData(jsonData)
+                    const errors = validateExcelData(normalizedData)
 
                     if (errors.length > 0) {
                         setValidationErrors(errors)
                     } else {
-                        setExcelData(jsonData)
+                        setExcelData(normalizedData)
                     }
                 }
             }

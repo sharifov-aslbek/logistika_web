@@ -17,6 +17,7 @@ const { Tr, Th, Td, THead, TBody } = Table
 import Input from '@/components/ui/Input'
 import DatePicker from '@/components/ui/DatePicker'
 import Button from '@/components/ui/Button'
+import Select from '@/components/ui/Select'
 import Tag from '@/components/ui/Tag'
 import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
@@ -24,6 +25,7 @@ import Card from '@/components/ui/Card'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
+import Pagination from '@/components/ui/Pagination'
 
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -47,7 +49,7 @@ const StatusTag = ({ row }: { row: any }) => {
 const MailList = () => {
     const navigate = useNavigate()
 
-    const { mails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
+    const { mails, totalMails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
     const { init, loadKey, createPkcs7, error, loading: storeLoading } = useEImzoStore()
 
     const token = useAccountStore((state: any) => state.user?.token) ||
@@ -60,6 +62,8 @@ const MailList = () => {
     const [filterSender, setFilterSender] = useState('')
     const [filterDate, setFilterDate] = useState<Date | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
+    const [pageIndex, setPageIndex] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
     const [isExporting, setIsExporting] = useState(false)
     const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [sendModalOpen, setSendModalOpen] = useState(false)
@@ -68,6 +72,7 @@ const MailList = () => {
     const [isSending, setIsSending] = useState(false)
 
     const [bulkModalOpen, setBulkModalOpen] = useState(false)
+    const [bulkActionType, setBulkActionType] = useState<'send' | 'delete'>('send')
     const [bulkResults, setBulkResults] = useState({
         total: 0,
         processed: 0,
@@ -75,6 +80,7 @@ const MailList = () => {
         failed: 0,
         isComplete: false,
     })
+    const [bulkDeleteModalOpen, setBulkDeleteModalOpen] = useState(false)
     const [deleteModalOpen, setDeleteModalOpen] = useState(false)
     const [mailToDelete, setMailToDelete] = useState<any>(null)
     const [isDeleting, setIsDeleting] = useState(false)
@@ -95,6 +101,8 @@ const MailList = () => {
     const fetchData = async () => {
         const dateStr = formatDate(filterDate)
         await getAllMails({
+            pageIndex,
+            pageSize,
             startDate: dateStr,
             endDate: dateStr,
             isSend: false,
@@ -104,7 +112,14 @@ const MailList = () => {
 
     useEffect(() => {
         fetchData()
-    }, [filterDate])
+    }, [filterDate, pageIndex, pageSize])
+
+    const onPaginationChange = (page: number) => setPageIndex(page)
+
+    const onSelectChange = (value: number) => {
+        setPageSize(value)
+        setPageIndex(1)
+    }
 
     const filteredMails = useMemo(() => {
         if (!mails) return []
@@ -163,6 +178,10 @@ const MailList = () => {
         setSendModalOpen(true)
     }
 
+    const handleBulkDeleteClick = () => {
+        setBulkDeleteModalOpen(true)
+    }
+
     const openDeleteDialog = (row: any) => {
         setMailToDelete(row)
         setDeleteModalOpen(true)
@@ -174,9 +193,9 @@ const MailList = () => {
         try {
             const success = await deleteMail(mailToDelete.uid)
             if (success) {
-                setSelectedIds((prev) => prev.filter((id) => id !== mailToDelete.uid))
                 setDeleteModalOpen(false)
                 setMailToDelete(null)
+                await fetchData()
                 toast.push(<Notification type="success">Hujjat muvaffaqiyatli o&apos;chirildi</Notification>)
             } else {
                 toast.push(<Notification type="danger">O&apos;chirishda xatolik yuz berdi</Notification>)
@@ -226,6 +245,7 @@ const MailList = () => {
     }
 
     const startBulkProcessing = async (activeKeyId: string) => {
+        setBulkActionType('send')
         setBulkModalOpen(true)
         setBulkResults({ total: selectedIds.length, processed: 0, success: 0, failed: 0, isComplete: false })
         let sCount = 0
@@ -238,6 +258,41 @@ const MailList = () => {
         }
         setBulkResults(prev => ({ ...prev, isComplete: true }))
         fetchData()
+    }
+
+    const startBulkDeleteProcessing = async () => {
+        const idsToDelete = [...selectedIds]
+        if (idsToDelete.length === 0) return
+
+        setBulkDeleteModalOpen(false)
+        setBulkActionType('delete')
+        setBulkModalOpen(true)
+        setBulkResults({ total: idsToDelete.length, processed: 0, success: 0, failed: 0, isComplete: false })
+
+        let sCount = 0
+        let fCount = 0
+
+        for (let i = 0; i < idsToDelete.length; i++) {
+            const uid = idsToDelete[i]
+            const success = await deleteMail(uid)
+
+            if (success) {
+                sCount++
+                setSelectedIds((prev) => prev.filter((id) => id !== uid))
+            } else {
+                fCount++
+            }
+
+            setBulkResults((prev) => ({
+                ...prev,
+                processed: i + 1,
+                success: sCount,
+                failed: fCount,
+            }))
+        }
+
+        setBulkResults((prev) => ({ ...prev, isComplete: true }))
+        await fetchData()
     }
 
     return (
@@ -262,6 +317,11 @@ const MailList = () => {
                         {selectedIds.length > 0 && (
                             <Button variant="solid" color="emerald-600" size="sm" icon={<HiOutlinePaperAirplane className="rotate-90" />} onClick={handleBulkSendClick}>
                                 Yuborish ({selectedIds.length})
+                            </Button>
+                        )}
+                        {selectedIds.length > 0 && (
+                            <Button variant="solid" color="red-600" size="sm" icon={<HiOutlineTrash />} onClick={handleBulkDeleteClick}>
+                                O'chirish ({selectedIds.length})
                             </Button>
                         )}
                         <Button variant="twoTone" color="blue-600" size="sm" icon={<HiOutlineDownload />} loading={isExporting} onClick={handleExportExcel}>Excel</Button>
@@ -330,6 +390,35 @@ const MailList = () => {
                         )}
                     </TBody>
                 </Table>
+
+                <div className="p-4 flex items-center justify-between border-t border-gray-200">
+                    <Pagination
+                        pageSize={pageSize}
+                        currentPage={pageIndex}
+                        total={totalMails}
+                        onChange={onPaginationChange}
+                    />
+                    <div className="w-32">
+                        <Select
+                            size="sm"
+                            menuPlacement="top"
+                            isSearchable={false}
+                            value={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ].find((item) => item.value === pageSize)}
+                            options={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ]}
+                            onChange={(option) =>
+                                onSelectChange(option?.value || 10)
+                            }
+                        />
+                    </div>
+                </div>
             </Card>
 
             <Dialog isOpen={sendModalOpen} onClose={() => setSendModalOpen(false)} title="Hujjatni yuborish" width={500}>
@@ -375,7 +464,26 @@ const MailList = () => {
                 </div>
             </Dialog>
 
-            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title="Natija" width={500} closable={bulkResults.isComplete}>
+            <Dialog isOpen={bulkDeleteModalOpen} onClose={() => setBulkDeleteModalOpen(false)} title="Qoralamalarni o'chirish" width={420}>
+                <div className="mt-4">
+                    <p className="text-gray-600 mb-2">
+                        Haqiqatan ham <strong>{selectedIds.length} ta</strong> qoralamani o&apos;chirmoqchimisiz?
+                    </p>
+                    <p className="text-sm text-gray-400 mb-6">
+                        Bu amal tanlangan mail yozuvlari va ularga bog&apos;langan PDF fayllarni o&apos;chiradi. Amalni ortga qaytarib bo&apos;lmaydi.
+                    </p>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="plain" onClick={() => setBulkDeleteModalOpen(false)}>
+                            Bekor qilish
+                        </Button>
+                        <Button variant="solid" color="red-600" onClick={startBulkDeleteProcessing}>
+                            Ha, barchasini o&apos;chirish
+                        </Button>
+                    </div>
+                </div>
+            </Dialog>
+
+            <Dialog isOpen={bulkModalOpen} onClose={() => bulkResults.isComplete && setBulkModalOpen(false)} title={bulkActionType === 'delete' ? "O'chirish natijasi" : 'Natija'} width={500} closable={bulkResults.isComplete}>
                 <div className="flex flex-col gap-4 py-4 items-center text-center">
                     {!bulkResults.isComplete ? (
                         <div className="flex flex-col items-center">
@@ -388,7 +496,7 @@ const MailList = () => {
                             <div className="grid grid-cols-2 gap-4 w-full">
                                 <div className="bg-green-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-green-600">{bulkResults.success}</div>
-                                    <div className="text-sm">Muvaffaqiyatli</div>
+                                    <div className="text-sm">{bulkActionType === 'delete' ? "O'chirildi" : 'Muvaffaqiyatli'}</div>
                                 </div>
                                 <div className="bg-red-50 p-4 rounded-lg">
                                     <div className="text-2xl font-bold text-red-600">{bulkResults.failed}</div>
