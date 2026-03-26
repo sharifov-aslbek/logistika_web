@@ -15,12 +15,14 @@ const { Tr, Th, Td, THead, TBody } = Table
 import Input from '@/components/ui/Input'
 import DatePicker from '@/components/ui/DatePicker'
 import Button from '@/components/ui/Button'
+import Select from '@/components/ui/Select'
 import Tag from '@/components/ui/Tag'
 import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
 import Card from '@/components/ui/Card'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import Pagination from '@/components/ui/Pagination'
 import axios from 'axios'
 import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
@@ -85,10 +87,13 @@ const SentMails = () => {
 
     // Store
     // ✨ ADDED: exportExcel
-    const { mails, isLoading, getAllMails, exportExcel } = useMailStore()
+    const { mails, totalMails, isLoading, getAllMails, exportExcel } =
+        useMailStore()
     const token = useAccountStore((state) => state.userProfile?.token)
 
     // --- State ---
+    const [pageIndex, setPageIndex] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
     const [filterId, setFilterId] = useState('')
     const [filterName, setFilterName] = useState('')
 
@@ -187,6 +192,8 @@ const SentMails = () => {
     // --- API Fetch ---
     const fetchData = async () => {
         await getAllMails({
+            pageIndex,
+            pageSize,
             startDate: formatDate(startDate),
             endDate: formatDate(endDate),
             isSend: true, // Always true for this page
@@ -195,7 +202,14 @@ const SentMails = () => {
 
     useEffect(() => {
         fetchData()
-    }, [startDate, endDate])
+    }, [startDate, endDate, pageIndex, pageSize])
+
+    const onPaginationChange = (page: number) => setPageIndex(page)
+
+    const onSelectChange = (value: number) => {
+        setPageSize(value)
+        setPageIndex(1)
+    }
 
     // --- Client-Side Filtering (Visual Only) ---
     const filteredMails = useMemo(() => {
@@ -413,6 +427,35 @@ const SentMails = () => {
                         )}
                     </TBody>
                 </Table>
+
+                <div className="p-4 flex items-center justify-between border-t border-gray-200">
+                    <Pagination
+                        pageSize={pageSize}
+                        currentPage={pageIndex}
+                        total={totalMails}
+                        onChange={onPaginationChange}
+                    />
+                    <div className="w-32">
+                        <Select
+                            size="sm"
+                            menuPlacement="top"
+                            isSearchable={false}
+                            value={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ].find((item) => item.value === pageSize)}
+                            options={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ]}
+                            onChange={(option) =>
+                                onSelectChange(option?.value || 10)
+                            }
+                        />
+                    </div>
+                </div>
             </Card>
 
             <Dialog
