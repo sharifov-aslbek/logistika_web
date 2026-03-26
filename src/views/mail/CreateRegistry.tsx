@@ -58,17 +58,8 @@ const HEADER_ALIASES: Record<string, string> = {
     filial_id: 'branch_id',
 }
 
-const DISPLAY_LABEL_VALUES = [
-    'фио клиента',
-    'адрес регистрации клиента',
-    'получатель',
-    'адрес',
-    'receiver',
-    'address',
-]
-
 const normalizeHeaderKey = (header: string) => {
-    const normalized = header
+    const normalized = String(header || '')
         .trim()
         .toLowerCase()
         .replace(/[\s-]+/g, '_')
@@ -92,43 +83,13 @@ const isMeaningfulValue = (value: unknown) => {
     return String(value ?? '').trim() !== ''
 }
 
-const isDisplayLabelRow = (row: Record<string, any>) => {
-    const values = Object.values(row).map((v) =>
-        String(v ?? '').trim().toLowerCase(),
-    )
-
-    const matchedCount = values.filter((value) =>
-        DISPLAY_LABEL_VALUES.includes(value),
-    ).length
-
-    return matchedCount >= 2
-}
-
-const isHeaderLikeDataRow = (row: Record<string, any>) => {
-    const receiver = String(row.receiver ?? '').trim().toLowerCase()
-    const address = String(row.address ?? '').trim().toLowerCase()
-    const region = String(row.region ?? '').trim().toLowerCase()
-    const area = String(row.area ?? '').trim().toLowerCase()
-    const branchId = String(row.branch_id ?? '').trim().toLowerCase()
-
-    return (
-        receiver === 'receiver' ||
-        receiver === 'получатель' ||
-        address === 'address' ||
-        address === 'адрес' ||
-        region === 'region' ||
-        area === 'area' ||
-        branchId === 'branch_id'
-    )
-}
-
-// ✅ Excel ichidan A va B ustunlarni doim skip qiladi
-// ✅ Headerni topadi
-// ✅ Headerdan keyingi fake label rowni olib tashlaydi
-const readRegistrySheetSkippingFirstTwoColumns = (
-    worksheet: XLSX.WorkSheet,
-    role: number,
-) => {
+/**
+ * Excel format:
+ * 1-qator -> english keys
+ * 2-qator -> ruscha label (ignore)
+ * 3-qator va past -> real data
+ */
+const readRegistrySheet = (worksheet: XLSX.WorkSheet, role: number) => {
     const requiredHeaders = getRequiredHeaders(role)
 
     const rows = XLSX.utils.sheet_to_json(worksheet, {
@@ -137,42 +98,42 @@ const readRegistrySheetSkippingFirstTwoColumns = (
         defval: '',
     }) as any[][]
 
-    let headerRowIndex = -1
-    let normalizedHeaders: string[] = []
-
-    for (let i = 0; i < rows.length; i++) {
-        const currentRow = (rows[i] || []).slice(2) // A va B skip
-        const currentNormalizedHeaders = currentRow.map((cell) =>
-            normalizeHeaderKey(String(cell || '')),
-        )
-
-        const hasAllRequiredHeaders = requiredHeaders.every((header) =>
-            currentNormalizedHeaders.includes(header),
-        )
-
-        if (hasAllRequiredHeaders) {
-            headerRowIndex = i
-            normalizedHeaders = currentNormalizedHeaders
-            break
-        }
-    }
-
-    if (headerRowIndex === -1) {
+    if (!rows || rows.length < 3) {
         return {
-            error: `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}`,
+            error: "Excel faylda kamida 3 qator bo'lishi kerak: 1-qator keylar, 2-qator label, 3-qator data.",
             data: [],
         }
     }
 
-    const dataRows = rows.slice(headerRowIndex + 1)
+    // 1-qator = header
+    const headerRow = rows[0] || []
+    const normalizedHeaders = headerRow.map((cell) =>
+        normalizeHeaderKey(String(cell || '')),
+    )
+
+    const missingHeaders = requiredHeaders.filter(
+        (header) => !normalizedHeaders.includes(header),
+    )
+
+    if (missingHeaders.length > 0) {
+        return {
+            error: `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}. Topilmaganlar: ${missingHeaders.join(', ')}`,
+            data: [],
+        }
+    }
+
+    // 2-qator = ruscha label -> skip
+    // 3-qator va keyingisi = data
+    const dataRows = rows.slice(2)
 
     const mappedData = dataRows
         .map((row) => {
-            const skippedRow = (row || []).slice(2) // A va B skip
             const obj: Record<string, any> = {}
 
             normalizedHeaders.forEach((header, index) => {
-                obj[header] = skippedRow[index] ?? ''
+                if (header) {
+                    obj[header] = row?.[index] ?? ''
+                }
             })
 
             return obj
@@ -180,8 +141,6 @@ const readRegistrySheetSkippingFirstTwoColumns = (
         .filter((row) =>
             Object.values(row).some((value) => isMeaningfulValue(value)),
         )
-        .filter((row) => !isHeaderLikeDataRow(row))
-        .filter((row) => !isDisplayLabelRow(row))
 
     return {
         error: null,
@@ -254,7 +213,7 @@ const CreateRegistry = () => {
         const requiredFields = getRequiredHeaders(role)
 
         data.forEach((row, index) => {
-            const rowNumber = index + 2
+            const rowNumber = index + 3 // Excelda data 3-qatordan boshlanadi
 
             if (!row.receiver || String(row.receiver).trim() === '') {
                 errors.push(`Qator ${rowNumber}: "receiver" ustuni bo'sh`)
@@ -276,15 +235,7 @@ const CreateRegistry = () => {
 
     const transformDataToApiFormat = (rawData: any[], templateName: string) => {
         const cleanRows = rawData.filter((row) => {
-            if (!row || !isMeaningfulValue(row.receiver)) {
-                return false
-            }
-
-            if (isHeaderLikeDataRow(row) || isDisplayLabelRow(row)) {
-                return false
-            }
-
-            return true
+            return row && isMeaningfulValue(row.receiver)
         })
 
         return cleanRows.map((row) => {
@@ -336,16 +287,10 @@ const CreateRegistry = () => {
             const sheetName = workbook.SheetNames[0]
             const worksheet = workbook.Sheets[sheetName]
 
-            const result = readRegistrySheetSkippingFirstTwoColumns(
-                worksheet,
-                role,
-            )
+            const result = readRegistrySheet(worksheet, role)
 
             if (result.error) {
-                setValidationErrors([
-                    result.error,
-                    "Eslatma: import A va B ustunlarini o'qimaydi, ma'lumot C ustundan boshlanishi kerak.",
-                ])
+                setValidationErrors([result.error])
                 return
             }
 
