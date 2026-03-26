@@ -163,20 +163,51 @@
                 }
             }
         },
-        "/api/registry/queue-mails": {
+        "/api/registry/process-mails": {
             "post": {
                 "tags": [ "Registry" ],
-                "summary": "Массовое создание писем (Очередь JSON)",
-                "description": "Принимает массив данных. Для каждого элемента генерирует PDF на основе указанного Шаблона и ставит в очередь на создание.",
+                "summary": "Массовая обработка писем из реестра",
+                "description": "Принимает массив писем из реестра, подставляет данные в выбранный шаблон и создает письма. Поле content должно быть JSON-строкой с данными для шаблона.",
                 "requestBody": {
+                    "required": true,
                     "content": {
                         "application/json": {
-                            "schema": { "$ref": "#/components/schemas/RegistryRequestModel" }
+                            "schema": { "$ref": "#/components/schemas/RegistryRequestModel" },
+                            "example": {
+                                "mails": [
+                                    {
+                                        "receiver": "Наврузов Рахмат Толибович",
+                                        "regionId": 1,
+                                        "areaId": 3,
+                                        "address": "УЗБЕКИСТАН, Бухарская область Каганский район Шуробод село",
+                                        "content": "{\"дата_и_месяц_письма\":\"1\",\"year_letter\":\"ALTIBAYEVA ALFIYA RASHADOVNA\",\"date_month_letter\":\"08/06/1992\",\"region_name\":\"Область \",\"district\":\"Район \",\"workplace\":\"Место работы \",\"phone_number\":\"Номер телефона \",\"passport\":\"Паспорт \",\"date_of_birth\":\"Дата рождения \",\"pinfl\":\"ПИНФЛ \",\"given_by_whom\":\"Кем выдан \",\"date_of_delivery\":\"Дата выдачи \",\"loan_date\":\"Дата кредита \",\"contract_number\":\"Номер договора \",\"loan_amount\":\"Сумма кредита \",\"product_name\":\"Наименование продукта \",\"today_debt\":\"Текущая задолженность \",\"state_duty\":\"Госпошлина \",\"total\":\"Итого \",\"registration_number\":\"Регистрационный номер \"}",
+                                        "templateName": "alif nasiya",
+                                        "BranchId": 0
+                                    }
+                                ]
+                            }
                         }
                     }
                 },
                 "responses": {
-                    "200": { "description": "Добавлено в очередь" }
+                    "200": {
+                        "description": "Письма успешно обработаны",
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/RegistryProcessResponseModel" },
+                                "example": {
+                                    "success": true,
+                                    "message": "Processed 1 mails. 1 successful, 0 failed.",
+                                    "data": {
+                                        "totalProcessed": 1,
+                                        "successCount": 1,
+                                        "errorCount": 0,
+                                        "errorMessages": []
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         },
@@ -357,8 +388,29 @@
                     "regionId": { "type": "integer", "format": "int64" },
                     "areaId": { "type": "integer", "format": "int64" },
                     "address": { "type": "string", "description": "Полный адрес" },
-                    "content": { "type": "string", "description": "Данные для подстановки в шаблон (JSON строка)" },
-                    "templateName": { "type": "string", "description": "Имя существующего шаблона" }
+                    "content": { "type": "string", "description": "Данные для подстановки в шаблон в формате JSON-строки" },
+                    "templateName": { "type": "string", "description": "Имя существующего шаблона" },
+                    "BranchId": { "type": "integer", "format": "int64", "description": "ID филиала. Можно передать 0, если филиал не требуется." }
+                }
+            },
+            "RegistryProcessResponseModel": {
+                "type": "object",
+                "properties": {
+                    "success": { "type": "boolean" },
+                    "message": { "type": "string" },
+                    "data": { "$ref": "#/components/schemas/RegistryProcessResultModel" }
+                }
+            },
+            "RegistryProcessResultModel": {
+                "type": "object",
+                "properties": {
+                    "totalProcessed": { "type": "integer", "format": "int32" },
+                    "successCount": { "type": "integer", "format": "int32" },
+                    "errorCount": { "type": "integer", "format": "int32" },
+                    "errorMessages": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
                 }
             }
         },
