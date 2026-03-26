@@ -17,6 +17,7 @@ const { Tr, Th, Td, THead, TBody } = Table
 import Input from '@/components/ui/Input'
 import DatePicker from '@/components/ui/DatePicker'
 import Button from '@/components/ui/Button'
+import Select from '@/components/ui/Select'
 import Tag from '@/components/ui/Tag'
 import Dialog from '@/components/ui/Dialog'
 import Spinner from '@/components/ui/Spinner'
@@ -24,6 +25,7 @@ import Card from '@/components/ui/Card'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
 import Tooltip from '@/components/ui/Tooltip'
+import Pagination from '@/components/ui/Pagination'
 
 import axios from 'axios'
 import dayjs from 'dayjs'
@@ -47,7 +49,7 @@ const StatusTag = ({ row }: { row: any }) => {
 const MailList = () => {
     const navigate = useNavigate()
 
-    const { mails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
+    const { mails, totalMails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
     const { init, loadKey, createPkcs7, error, loading: storeLoading } = useEImzoStore()
 
     const token = useAccountStore((state: any) => state.user?.token) ||
@@ -60,6 +62,8 @@ const MailList = () => {
     const [filterSender, setFilterSender] = useState('')
     const [filterDate, setFilterDate] = useState<Date | null>(null)
     const [searchQuery, setSearchQuery] = useState('')
+    const [pageIndex, setPageIndex] = useState(1)
+    const [pageSize, setPageSize] = useState(10)
     const [isExporting, setIsExporting] = useState(false)
     const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [sendModalOpen, setSendModalOpen] = useState(false)
@@ -97,6 +101,8 @@ const MailList = () => {
     const fetchData = async () => {
         const dateStr = formatDate(filterDate)
         await getAllMails({
+            pageIndex,
+            pageSize,
             startDate: dateStr,
             endDate: dateStr,
             isSend: false,
@@ -106,7 +112,14 @@ const MailList = () => {
 
     useEffect(() => {
         fetchData()
-    }, [filterDate])
+    }, [filterDate, pageIndex, pageSize])
+
+    const onPaginationChange = (page: number) => setPageIndex(page)
+
+    const onSelectChange = (value: number) => {
+        setPageSize(value)
+        setPageIndex(1)
+    }
 
     const filteredMails = useMemo(() => {
         if (!mails) return []
@@ -180,9 +193,9 @@ const MailList = () => {
         try {
             const success = await deleteMail(mailToDelete.uid)
             if (success) {
-                setSelectedIds((prev) => prev.filter((id) => id !== mailToDelete.uid))
                 setDeleteModalOpen(false)
                 setMailToDelete(null)
+                await fetchData()
                 toast.push(<Notification type="success">Hujjat muvaffaqiyatli o&apos;chirildi</Notification>)
             } else {
                 toast.push(<Notification type="danger">O&apos;chirishda xatolik yuz berdi</Notification>)
@@ -279,7 +292,7 @@ const MailList = () => {
         }
 
         setBulkResults((prev) => ({ ...prev, isComplete: true }))
-        setSelectedIds([])
+        await fetchData()
     }
 
     return (
@@ -377,6 +390,35 @@ const MailList = () => {
                         )}
                     </TBody>
                 </Table>
+
+                <div className="p-4 flex items-center justify-between border-t border-gray-200">
+                    <Pagination
+                        pageSize={pageSize}
+                        currentPage={pageIndex}
+                        total={totalMails}
+                        onChange={onPaginationChange}
+                    />
+                    <div className="w-32">
+                        <Select
+                            size="sm"
+                            menuPlacement="top"
+                            isSearchable={false}
+                            value={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ].find((item) => item.value === pageSize)}
+                            options={[
+                                { value: 10, label: '10 / page' },
+                                { value: 20, label: '20 / page' },
+                                { value: 50, label: '50 / page' },
+                            ]}
+                            onChange={(option) =>
+                                onSelectChange(option?.value || 10)
+                            }
+                        />
+                    </div>
+                </div>
             </Card>
 
             <Dialog isOpen={sendModalOpen} onClose={() => setSendModalOpen(false)} title="Hujjatni yuborish" width={500}>
