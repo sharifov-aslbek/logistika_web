@@ -79,6 +79,7 @@ const CreatePdf = () => {
     // --- Local State ---
     const [regions, setRegions] = useState<Option[]>([])
     const [areas, setAreas] = useState<Option[]>([])
+    const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
     const [loadingRegions, setLoadingRegions] = useState(false)
     const [loadingAreas, setLoadingAreas] = useState(false)
 
@@ -198,6 +199,22 @@ const CreatePdf = () => {
         }
     }
 
+    const handlePdfFileChange = (
+        files: File[],
+        setFieldValue: (field: string, value: any) => void,
+    ) => {
+        const file = files?.[0] || null
+        setUploadedFiles(file ? [file] : [])
+        setFieldValue('file', file)
+    }
+
+    const handlePdfFileRemove = (
+        setFieldValue: (field: string, value: any) => void,
+    ) => {
+        setUploadedFiles([])
+        setFieldValue('file', null)
+    }
+
     // --- Submit Handler ---
     const handleSubmit = async (values: any, { resetForm }: any) => {
         const formData = new FormData()
@@ -230,6 +247,7 @@ const CreatePdf = () => {
                 </Notification>,
             )
             resetForm()
+            setUploadedFiles([])
             setAreas([])
         } else {
             toast.push(
@@ -541,23 +559,17 @@ const CreatePdf = () => {
                                             <Upload
                                                 draggable
                                                 accept=".pdf"
+                                                fileList={uploadedFiles}
+                                                multiple={false}
                                                 showList={false}
+                                                uploadLimit={1}
                                                 className="border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-gray-800 transition-all rounded-xl p-8"
-                                                onChange={(files) => {
-                                                    if (
-                                                        files &&
-                                                        files.length > 0
+                                                onChange={(files) =>
+                                                    handlePdfFileChange(
+                                                        files,
+                                                        setFieldValue,
                                                     )
-                                                        setFieldValue(
-                                                            'file',
-                                                            files[0],
-                                                        )
-                                                    else
-                                                        setFieldValue(
-                                                            'file',
-                                                            null,
-                                                        )
-                                                }}
+                                                }
                                             >
                                                 <div className="flex flex-col items-center justify-center">
                                                     {!values.file ? (
@@ -610,9 +622,8 @@ const CreatePdf = () => {
                                                                     e,
                                                                 ) => {
                                                                     e.stopPropagation()
-                                                                    setFieldValue(
-                                                                        'file',
-                                                                        null,
+                                                                    handlePdfFileRemove(
+                                                                        setFieldValue,
                                                                     )
                                                                 }}
                                                             >
@@ -629,7 +640,10 @@ const CreatePdf = () => {
                                                 size="md"
                                                 className="min-w-[120px]"
                                                 type="button"
-                                                onClick={() => resetForm()}
+                                                onClick={() => {
+                                                    resetForm()
+                                                    setUploadedFiles([])
+                                                }}
                                             >
                                                 Bekor qilish
                                             </Button>
