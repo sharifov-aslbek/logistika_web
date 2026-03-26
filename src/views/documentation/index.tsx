@@ -6,6 +6,8 @@ export default function ApiDocs() {
             specUrl="/openai.json"
             options={{
                 scrollYOffset: 60,
+                jsonSampleExpandLevel: 'all',
+                payloadSampleIdx: 0,
                 theme: {
                     colors: {
                         primary: {
