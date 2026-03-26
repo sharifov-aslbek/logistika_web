@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { FormItem, FormContainer } from '@/components/ui/Form'
-import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import Upload from '@/components/ui/Upload'
@@ -24,27 +23,33 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
 const ROLE_WORKER = 10
 const ROLE_BRANCH_DIRECTOR = 20
 const ROLE_ADMIN = 30
+
 const EXCEL_ACCEPT =
     '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
 const HEADER_ALIASES: Record<string, string> = {
     receiver: 'receiver',
     receiver_name: 'receiver',
     qabul_qiluvchi: 'receiver',
     oluvchi: 'receiver',
     получатель: 'receiver',
+
     address: 'address',
     receiver_address: 'address',
     manzil: 'address',
     адрес: 'address',
+
     region: 'region',
     region_id: 'region',
     viloyat: 'region',
     область: 'region',
+
     area: 'area',
     area_id: 'area',
     tuman: 'area',
     tuman_id: 'area',
     район: 'area',
+
     branch_id: 'branch_id',
     branchid: 'branch_id',
     branch_id_: 'branch_id',
@@ -52,6 +57,15 @@ const HEADER_ALIASES: Record<string, string> = {
     filial: 'branch_id',
     filial_id: 'branch_id',
 }
+
+const DISPLAY_LABEL_VALUES = [
+    'фио клиента',
+    'адрес регистрации клиента',
+    'получатель',
+    'адрес',
+    'receiver',
+    'address',
+]
 
 const normalizeHeaderKey = (header: string) => {
     const normalized = header
@@ -64,19 +78,6 @@ const normalizeHeaderKey = (header: string) => {
     return HEADER_ALIASES[normalized] || normalized
 }
 
-const normalizeExcelRow = (row: Record<string, any>) => {
-    return Object.entries(row).reduce(
-        (acc, [key, value]) => {
-            const normalizedKey = normalizeHeaderKey(String(key))
-            if (normalizedKey) {
-                acc[normalizedKey] = value
-            }
-            return acc
-        },
-        {} as Record<string, any>,
-    )
-}
-
 const getRequiredHeaders = (role: number) => {
     const requiredHeaders = ['receiver', 'address', 'region', 'area']
 
@@ -87,82 +88,133 @@ const getRequiredHeaders = (role: number) => {
     return requiredHeaders
 }
 
-const findRegistryHeaderRow = (
+const isMeaningfulValue = (value: unknown) => {
+    return String(value ?? '').trim() !== ''
+}
+
+const isDisplayLabelRow = (row: Record<string, any>) => {
+    const values = Object.values(row).map((v) =>
+        String(v ?? '').trim().toLowerCase(),
+    )
+
+    const matchedCount = values.filter((value) =>
+        DISPLAY_LABEL_VALUES.includes(value),
+    ).length
+
+    return matchedCount >= 2
+}
+
+const isHeaderLikeDataRow = (row: Record<string, any>) => {
+    const receiver = String(row.receiver ?? '').trim().toLowerCase()
+    const address = String(row.address ?? '').trim().toLowerCase()
+    const region = String(row.region ?? '').trim().toLowerCase()
+    const area = String(row.area ?? '').trim().toLowerCase()
+    const branchId = String(row.branch_id ?? '').trim().toLowerCase()
+
+    return (
+        receiver === 'receiver' ||
+        receiver === 'получатель' ||
+        address === 'address' ||
+        address === 'адрес' ||
+        region === 'region' ||
+        area === 'area' ||
+        branchId === 'branch_id'
+    )
+}
+
+// ✅ Excel ichidan A va B ustunlarni doim skip qiladi
+// ✅ Headerni topadi
+// ✅ Headerdan keyingi fake label rowni olib tashlaydi
+const readRegistrySheetSkippingFirstTwoColumns = (
     worksheet: XLSX.WorkSheet,
-    requiredHeaders: string[],
+    role: number,
 ) => {
+    const requiredHeaders = getRequiredHeaders(role)
+
     const rows = XLSX.utils.sheet_to_json(worksheet, {
         header: 1,
         raw: false,
         defval: '',
-    }) as string[][]
+    }) as any[][]
 
-    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-        const normalizedRow = (rows[rowIndex] || [])
-            .slice(2)
-            .map((cell) => normalizeHeaderKey(String(cell || '')))
+    let headerRowIndex = -1
+    let normalizedHeaders: string[] = []
 
-        const hasAllHeaders = requiredHeaders.every((header) =>
-            normalizedRow.includes(header),
+    for (let i = 0; i < rows.length; i++) {
+        const currentRow = (rows[i] || []).slice(2) // A va B skip
+        const currentNormalizedHeaders = currentRow.map((cell) =>
+            normalizeHeaderKey(String(cell || '')),
         )
 
-        if (hasAllHeaders) {
-            return rowIndex
+        const hasAllRequiredHeaders = requiredHeaders.every((header) =>
+            currentNormalizedHeaders.includes(header),
+        )
+
+        if (hasAllRequiredHeaders) {
+            headerRowIndex = i
+            normalizedHeaders = currentNormalizedHeaders
+            break
         }
     }
 
-    return -1
-}
-
-const getRegistrySheetRange = (
-    worksheet: XLSX.WorkSheet,
-    headerRowIndex: number,
-) => {
-    const ref = worksheet['!ref']
-
-    if (!ref) {
-        return undefined
+    if (headerRowIndex === -1) {
+        return {
+            error: `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}`,
+            data: [],
+        }
     }
 
-    const range = XLSX.utils.decode_range(ref)
+    const dataRows = rows.slice(headerRowIndex + 1)
 
-    // Ignore the first 2 Excel columns (A and B). Registry data starts at C.
-    range.s.c = Math.max(range.s.c, 2)
-    range.s.r = Math.max(range.s.r, headerRowIndex)
+    const mappedData = dataRows
+        .map((row) => {
+            const skippedRow = (row || []).slice(2) // A va B skip
+            const obj: Record<string, any> = {}
 
-    return XLSX.utils.encode_range(range)
+            normalizedHeaders.forEach((header, index) => {
+                obj[header] = skippedRow[index] ?? ''
+            })
+
+            return obj
+        })
+        .filter((row) =>
+            Object.values(row).some((value) => isMeaningfulValue(value)),
+        )
+        .filter((row) => !isHeaderLikeDataRow(row))
+        .filter((row) => !isDisplayLabelRow(row))
+
+    return {
+        error: null,
+        data: mappedData,
+    }
 }
 
 const CreateRegistry = () => {
     const { t } = useTranslation()
     const navigate = useNavigate()
 
-    // --- Stores ---
     const {
         templates,
         getTemplates,
         isLoading: isTemplatesLoading,
     } = useTemplateStore()
 
-    // Get Token and Profile to check Role
     const token = useAccountStore((state) => state.user?.token)
     const userProfile = useAccountStore((state) => state.userProfile)
 
-    // Determine current role
     const role = Number(userProfile?.role || 0)
 
-    // --- Local State ---
     const [excelData, setExcelData] = useState<any[]>([])
     const [validationErrors, setValidationErrors] = useState<string[]>([])
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
-    
-    // ✨ NEW: Modal State for API Result
+
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [apiResult, setApiResult] = useState<any>(null)
 
     const isExcelFile = (file: File) => {
         const fileName = file.name.toLowerCase()
+
         return (
             fileName.endsWith('.xlsx') ||
             fileName.endsWith('.xls') ||
@@ -188,36 +240,26 @@ const CreateRegistry = () => {
         return true
     }
 
-    // --- 1. Fetch Templates on Mount ---
     useEffect(() => {
         getTemplates()
-    }, [])
+    }, [getTemplates])
 
-    // Prepare options for Select
-    const templateOptions = templates.map((t) => ({
-        value: t.name,
-        label: t.name,
+    const templateOptions = templates.map((template) => ({
+        value: template.name,
+        label: template.name,
     }))
 
-    // --- 2. Validation Logic ---
     const validateExcelData = (data: any[]) => {
         const errors: string[] = []
-
         const requiredFields = getRequiredHeaders(role)
 
         data.forEach((row, index) => {
-            const rowNumber = index + 2 // +2 because Excel starts at 1 and header is 1
+            const rowNumber = index + 2
 
-            // Skip header-like rows
-            if (row.receiver === 'Получатель' || row.receiver === 'Receiver')
-                return
-
-            // Check receiver existence
-            if (!row.receiver) {
+            if (!row.receiver || String(row.receiver).trim() === '') {
                 errors.push(`Qator ${rowNumber}: "receiver" ustuni bo'sh`)
             }
 
-            // Check missing columns
             const missingCols = requiredFields.filter((field) => {
                 return row[field] == null || String(row[field]).trim() === ''
             })
@@ -228,140 +270,126 @@ const CreateRegistry = () => {
                 )
             }
         })
+
         return errors
     }
 
-    // --- 3. Data Transformation ---
     const transformDataToApiFormat = (rawData: any[], templateName: string) => {
-        const cleanRows = rawData.filter(
-            (row) =>
-                row.receiver !== 'Получатель' && row.receiver !== 'Receiver',
-        )
-
-        return cleanRows.map((row) => {
-            // ✨ FIX: Destructure branch_id here so it is NOT included in "...rest" (content)
-            const { receiver, address, region, area, branch_id, ...rest } = row
-
-            // Process "rest" columns for Content JSON
-            const contentObj: any = {}
-            Object.keys(rest).forEach((key) => {
-                const value = rest[key]
-                contentObj[key] = String(value ?? '')
-            })
-
-            // Return exact shape for /queue-mails endpoint
-            const mailObject: any = {
-                receiver: String(receiver),
-                regionId: Number(region) || 0,
-                areaId: Number(area) || 0,
-                address: String(address),
-                content: JSON.stringify(contentObj),
-                templateName: templateName,
-
-                // ✨ FIX: Map 'branch_id' to 'BranchId' at top level
-                // Only include if it exists (which validation ensures for roles 10,20,30)
-                BranchId: branch_id ? Number(branch_id) : 0,
+        const cleanRows = rawData.filter((row) => {
+            if (!row || !isMeaningfulValue(row.receiver)) {
+                return false
             }
 
-            return mailObject
+            if (isHeaderLikeDataRow(row) || isDisplayLabelRow(row)) {
+                return false
+            }
+
+            return true
+        })
+
+        return cleanRows.map((row) => {
+            const { receiver, address, region, area, branch_id, ...rest } = row
+
+            const contentObj: Record<string, string> = {}
+
+            Object.keys(rest).forEach((key) => {
+                contentObj[key] = String(rest[key] ?? '')
+            })
+
+            return {
+                receiver: String(receiver ?? ''),
+                regionId: Number(region) || 0,
+                areaId: Number(area) || 0,
+                address: String(address ?? ''),
+                content: JSON.stringify(contentObj),
+                templateName,
+                BranchId: branch_id ? Number(branch_id) : 0,
+            }
         })
     }
 
-    // --- 4. File Upload Handler ---
     const handleFileUpload = (files: File[], form: any) => {
         setValidationErrors([])
         setExcelData([])
 
-        if (files && files.length > 0) {
-            const file = files[0]
+        if (!files || files.length === 0) return
 
-            if (!isExcelFile(file)) {
-                setUploadedFiles([])
-                form.setFieldValue('file', null)
+        const file = files[0]
+
+        if (!isExcelFile(file)) {
+            setUploadedFiles([])
+            form.setFieldValue('file', null)
+            return
+        }
+
+        setUploadedFiles([file])
+        form.setFieldValue('file', file)
+
+        const reader = new FileReader()
+
+        reader.onload = (e) => {
+            const data = e.target?.result
+
+            if (!data) return
+
+            const workbook = XLSX.read(data, { type: 'binary' })
+            const sheetName = workbook.SheetNames[0]
+            const worksheet = workbook.Sheets[sheetName]
+
+            const result = readRegistrySheetSkippingFirstTwoColumns(
+                worksheet,
+                role,
+            )
+
+            if (result.error) {
+                setValidationErrors([
+                    result.error,
+                    "Eslatma: import A va B ustunlarini o'qimaydi, ma'lumot C ustundan boshlanishi kerak.",
+                ])
                 return
             }
 
-            setUploadedFiles([file])
-            form.setFieldValue('file', file)
+            const normalizedData = result.data
 
-            const reader = new FileReader()
-            reader.onload = (e) => {
-                const data = e.target?.result
-                if (data) {
-                    const workbook = XLSX.read(data, { type: 'binary' })
-                    const sheetName = workbook.SheetNames[0]
-                    const worksheet = workbook.Sheets[sheetName]
-                    const requiredHeaders = getRequiredHeaders(role)
-                    const headerRowIndex = findRegistryHeaderRow(
-                        worksheet,
-                        requiredHeaders,
-                    )
-
-                    if (headerRowIndex === -1) {
-                        setValidationErrors([
-                            `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}`,
-                            "Eslatma: import A va B ustunlarini o'qimaydi, ma'lumot C ustundan boshlanishi kerak.",
-                        ])
-                        return
-                    }
-
-                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {
-                        defval: '',
-                        raw: false,
-                        range: getRegistrySheetRange(
-                            worksheet,
-                            headerRowIndex,
-                        ),
-                    })
-                    const normalizedData = jsonData.map((row: any) =>
-                        normalizeExcelRow(row),
-                    )
-
-                    if (normalizedData.length === 0) {
-                        setValidationErrors([
-                            "Excel faylda o'qiladigan ma'lumot topilmadi",
-                        ])
-                        return
-                    }
-
-                    const detectedHeaders = Object.keys(normalizedData[0] || {})
-                    const missingHeaders = requiredHeaders.filter(
-                        (header) => !detectedHeaders.includes(header),
-                    )
-
-                    if (missingHeaders.length > 0) {
-                        setValidationErrors([
-                            `Excel ustunlari mos emas. Kerakli ustunlar: ${requiredHeaders.join(', ')}`,
-                            `Topilmagan ustunlar: ${missingHeaders.join(', ')}`,
-                        ])
-                        return
-                    }
-
-                    // ✨ NEW: Filter header rows to count actual data rows correctly
-                    const cleanRowsForLimitCheck = normalizedData.filter(
-                        (row: any) =>
-                            row.receiver !== 'Получатель' && row.receiver !== 'Receiver',
-                    )
-
-                    // ✨ NEW: Enforce maximum 200 records limit
-                    if (cleanRowsForLimitCheck.length > 200) {
-                        setValidationErrors([
-                            'Excel file contains more than 200 records. Maximum allowed is 200.',
-                        ])
-                        return
-                    }
-
-                    const errors = validateExcelData(normalizedData)
-
-                    if (errors.length > 0) {
-                        setValidationErrors(errors)
-                    } else {
-                        setExcelData(normalizedData)
-                    }
-                }
+            if (normalizedData.length === 0) {
+                setValidationErrors([
+                    "Excel faylda o'qiladigan ma'lumot topilmadi",
+                ])
+                return
             }
-            reader.readAsBinaryString(file)
+
+            const requiredHeaders = getRequiredHeaders(role)
+            const detectedHeaders = Object.keys(normalizedData[0] || {})
+            const missingHeaders = requiredHeaders.filter(
+                (header) => !detectedHeaders.includes(header),
+            )
+
+            if (missingHeaders.length > 0) {
+                setValidationErrors([
+                    `Excel ustunlari mos emas. Kerakli ustunlar: ${requiredHeaders.join(', ')}`,
+                    `Topilmagan ustunlar: ${missingHeaders.join(', ')}`,
+                ])
+                return
+            }
+
+            if (normalizedData.length > 200) {
+                setValidationErrors([
+                    'Excel file contains more than 200 records. Maximum allowed is 200.',
+                ])
+                return
+            }
+
+            const errors = validateExcelData(normalizedData)
+
+            if (errors.length > 0) {
+                setValidationErrors(errors)
+                return
+            }
+
+            setExcelData(normalizedData)
         }
+
+        reader.readAsBinaryString(file)
     }
 
     const handleFileRemove = (form: any) => {
@@ -371,9 +399,9 @@ const CreateRegistry = () => {
         form.setFieldValue('file', null)
     }
 
-    // --- 5. API Submit Handler ---
     const handleSubmit = async (values: any) => {
         if (validationErrors.length > 0) return
+
         if (excelData.length === 0) {
             toast.push(
                 <Notification type="warning">
@@ -385,20 +413,14 @@ const CreateRegistry = () => {
 
         setIsSubmitting(true)
 
-        const payloadMails = transformDataToApiFormat(
-            excelData,
-            values.templateName,
-        )
-
         const payload = {
-            mails: payloadMails,
+            mails: transformDataToApiFormat(excelData, values.templateName),
         }
 
-        // ✨ NEW: Immediate notification that process started
         toast.push(
-          <Notification type="info">
-  Jo'natildi, yaratilmoqda. Tayyor bo‘lgach sizga xabar beramiz.
-</Notification>
+            <Notification type="info">
+                Jo'natildi, yaratilmoqda. Tayyor bo‘lgach sizga xabar beramiz.
+            </Notification>,
         )
 
         try {
@@ -417,30 +439,36 @@ const CreateRegistry = () => {
             )
 
             if (response.status === 200 || response.status === 201) {
-                // ✨ NEW: Prepare modal data and open modal instead of immediate navigation
                 const resultData = response.data?.data || {}
+
                 setApiResult({
-                    message: response.data?.message || 'Amaliyot muvaffaqiyatli yakunlandi',
+                    message:
+                        response.data?.message ||
+                        'Amaliyot muvaffaqiyatli yakunlandi',
                     totalProcessed: resultData.totalProcessed || 0,
                     successCount: resultData.successCount || 0,
                     errorCount: resultData.errorCount || 0,
                     errorMessages: resultData.errorMessages || [],
                 })
+
                 setIsModalOpen(true)
             }
         } catch (error: any) {
             console.error('API Error:', error)
+
             const errorMsg =
                 error.response?.data?.message || 'Xatolik yuz berdi'
+
             toast.push(
-                <Notification type="danger">Xatolik: {errorMsg}</Notification>,
+                <Notification type="danger">
+                    Xatolik: {errorMsg}
+                </Notification>,
             )
         } finally {
             setIsSubmitting(false)
         }
     }
 
-    // ✨ NEW: Handle closing modal and executing navigation
     const handleCloseModal = () => {
         setIsModalOpen(false)
         navigate('/mail/draftmails')
@@ -465,16 +493,13 @@ const CreateRegistry = () => {
                 }}
                 onSubmit={handleSubmit}
             >
-                {({ values, setFieldValue }) => (
+                {({ values }) => (
                     <Form>
                         <FormContainer>
                             <div className="flex flex-col gap-6">
-                                {/* Template Select */}
                                 <FormItem
                                     label="Shablon turi"
-                                    invalid={
-                                        !values.templateName && isSubmitting
-                                    }
+                                    invalid={!values.templateName && isSubmitting}
                                     errorMessage="Shablon tanlash shart"
                                 >
                                     <Field name="templateName">
@@ -497,7 +522,7 @@ const CreateRegistry = () => {
                                                 onChange={(option: any) =>
                                                     form.setFieldValue(
                                                         field.name,
-                                                        option?.value,
+                                                        option?.value || '',
                                                     )
                                                 }
                                             />
@@ -505,7 +530,6 @@ const CreateRegistry = () => {
                                     </Field>
                                 </FormItem>
 
-                                {/* File Upload */}
                                 <FormItem
                                     label="Hujjat reyestri (Excel)"
                                     invalid={!values.file && isSubmitting}
@@ -521,10 +545,7 @@ const CreateRegistry = () => {
                                                 fileList={uploadedFiles}
                                                 multiple={false}
                                                 onChange={(files) =>
-                                                    handleFileUpload(
-                                                        files,
-                                                        form,
-                                                    )
+                                                    handleFileUpload(files, form)
                                                 }
                                                 onFileRemove={() =>
                                                     handleFileRemove(form)
@@ -535,19 +556,18 @@ const CreateRegistry = () => {
                                                     <div className="mb-4 text-indigo-500 text-5xl">
                                                         <HiOutlineCloudUpload />
                                                     </div>
+
                                                     <div className="text-base font-medium text-gray-600 dark:text-gray-300">
                                                         {values.file ? (
                                                             <span className="text-emerald-500 font-bold">
-                                                                {
-                                                                    values.file
-                                                                        .name
-                                                                }{' '}
+                                                                {values.file.name}{' '}
                                                                 yuklandi
                                                             </span>
                                                         ) : (
                                                             'Faylni shu yerga tashlang yoki yuklang'
                                                         )}
                                                     </div>
+
                                                     <div className="text-sm mt-2 text-gray-400">
                                                         Excel (.xlsx, .xls)
                                                     </div>
@@ -557,7 +577,6 @@ const CreateRegistry = () => {
                                     </Field>
                                 </FormItem>
 
-                                {/* Validation Errors Alert */}
                                 {validationErrors.length > 0 && (
                                     <Alert
                                         showIcon
@@ -577,7 +596,6 @@ const CreateRegistry = () => {
                                     </Alert>
                                 )}
 
-                                {/* Actions */}
                                 <div className="flex justify-end gap-4 mt-2">
                                     <Button
                                         size="lg"
@@ -588,7 +606,7 @@ const CreateRegistry = () => {
                                     >
                                         Bekor qilish
                                     </Button>
-                                    {/* ✨ FIX: Removed loading prop, kept disabled to prevent multiple submissions */}
+
                                     <Button
                                         variant="solid"
                                         size="lg"
@@ -610,7 +628,6 @@ const CreateRegistry = () => {
                 )}
             </Formik>
 
-            {/* ✨ NEW: Results Modal overlay */}
             {isModalOpen && apiResult && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4">
                     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
@@ -619,45 +636,53 @@ const CreateRegistry = () => {
                                 Qayta ishlash natijasi
                             </h2>
                         </div>
-                        
+
                         <div className="p-6 overflow-y-auto flex-1">
-                            {/* <p className="text-gray-700 dark:text-gray-300 mb-6 font-medium">
-                                {apiResult.message}
-                            </p> */}
-                            
                             <div className="grid grid-cols-3 gap-4 mb-6 text-center">
                                 <div className="bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
-                                    <div className="text-sm text-gray-500 dark:text-gray-400">Jami</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                        Jami
+                                    </div>
                                     <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                                         {apiResult.totalProcessed}
                                     </div>
                                 </div>
+
                                 <div className="bg-emerald-50 dark:bg-emerald-900/20 p-3 rounded-lg">
-                                    <div className="text-sm text-gray-500 dark:text-gray-400">Muvaffaqiyatli</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                        Muvaffaqiyatli
+                                    </div>
                                     <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
                                         {apiResult.successCount}
                                     </div>
                                 </div>
+
                                 <div className="bg-red-50 dark:bg-red-900/20 p-3 rounded-lg">
-                                    <div className="text-sm text-gray-500 dark:text-gray-400">Xatolik</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                        Xatolik
+                                    </div>
                                     <div className="text-xl font-bold text-red-600 dark:text-red-400">
                                         {apiResult.errorCount}
                                     </div>
                                 </div>
                             </div>
 
-                            {apiResult.errorMessages && apiResult.errorMessages.length > 0 && (
-                                <div className="mt-4">
-                                    <div className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">
-                                        Xatoliklar ro'yxati:
+                            {apiResult.errorMessages &&
+                                apiResult.errorMessages.length > 0 && (
+                                    <div className="mt-4">
+                                        <div className="text-sm font-semibold text-red-600 dark:text-red-400 mb-2">
+                                            Xatoliklar ro'yxati:
+                                        </div>
+
+                                        <ul className="list-disc pl-5 space-y-1 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 p-4 rounded-lg">
+                                            {apiResult.errorMessages.map(
+                                                (msg: string, idx: number) => (
+                                                    <li key={idx}>{msg}</li>
+                                                ),
+                                            )}
+                                        </ul>
                                     </div>
-                                    <ul className="list-disc pl-5 space-y-1 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/10 p-4 rounded-lg">
-                                        {apiResult.errorMessages.map((msg: string, idx: number) => (
-                                            <li key={idx}>{msg}</li>
-                                        ))}
-                                    </ul>
-                                </div>
-                            )}
+                                )}
                         </div>
 
                         <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
