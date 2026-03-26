@@ -10,7 +10,7 @@ const KEYS = {
 const hostname = window.location.hostname
 
 // Check if we are on the production domain
-const isProd = hostname === 'xathippo.uz' || hostname === 'www.xathippo.uz'
+const isProd = hostname === 'xat.hippo.uz' || hostname === 'www.xat.hippo.uz'
 
 export const EIMZO_URL = 'wss://127.0.0.1:64443/service/cryptapi'
 
