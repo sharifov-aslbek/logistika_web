@@ -208,6 +208,7 @@ class EImzoClient {
     }
 
     // 2. Load Certificates
+   // 2. Load Certificates
     async loadAllCertificates() {
         // List Disks
         const disksResponse = await this._makeRequest({
@@ -217,7 +218,8 @@ class EImzoClient {
         if (!disksResponse.success) throw new Error('Failed to load disks')
 
         const promises: Promise<any>[] = []
-        const disks = disksResponse.disks
+        // Safely fallback to an empty array if disks is undefined
+        const disks = disksResponse.disks || []
 
         for (const disk of disks) {
             // PFX
@@ -227,8 +229,12 @@ class EImzoClient {
                     name: 'list_certificates',
                     arguments: [disk],
                 }).then((resp) =>
-                    resp.certificates.map((c: any) => new CertificatePfx(c)),
-                ),
+                    // FIX: Added (resp.certificates || [])
+                    (resp.certificates || []).map((c: any) => new CertificatePfx(c)),
+                ).catch((e) => {
+                    console.warn(`[EImzoClient] Failed to load PFX certs for disk ${disk}`, e)
+                    return []
+                })
             )
 
             // CertKey
@@ -238,10 +244,14 @@ class EImzoClient {
                     name: 'list_certificates',
                     arguments: [disk],
                 }).then((resp) =>
-                    resp.certificates.map(
+                    // FIX: Added (resp.certificates || [])
+                    (resp.certificates || []).map(
                         (c: any) => new CertificateCertkey(c),
                     ),
-                ),
+                ).catch((e) => {
+                    console.warn(`[EImzoClient] Failed to load CertKey certs for disk ${disk}`, e)
+                    return []
+                })
             )
         }
 
