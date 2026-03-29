@@ -986,7 +986,7 @@ const CreateRegistry = () => {
                                                     !values.templateName
                                                 }
                                             >
-                                                External yuborish
+                                                Yaratish
                                             </Button>
                                         </div>
                                     </div>
