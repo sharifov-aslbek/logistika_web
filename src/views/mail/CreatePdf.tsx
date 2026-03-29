@@ -63,7 +63,7 @@ const AutoSelectOrganization = ({
 
     useEffect(() => {
         if (
-            EMPLOYEE_ROLES.includes(role) &&
+            role === ROLE_ADMIN &&
             organizations.length > 0 &&
             (values.organizationId == null ||
                 !organizations.some(
@@ -299,41 +299,54 @@ const OrganizationBranchFields = ({
     }
 
     return (
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            <FormItem
-                label="Yuboruvchi Tashkilot"
-                invalid={!!(errors.organizationId && touched.organizationId)}
-                errorMessage={errors.organizationId as string}
-            >
-                <Select
-                    options={orgOptions}
-                    placeholder="Tashkilot..."
-                    isDisabled={true}
-                    value={
-                        orgOptions.find(
-                            (option: Option) =>
-                                option.value === values.organizationId,
-                        ) || null
-                    }
-                    onChange={(option: any) =>
-                        handleNumericSelectChange('organizationId', option, {
-                            setFieldValue,
-                            setFieldTouched,
-                            setFieldError,
-                        })
-                    }
-                    className="shadow-sm"
-                />
-            </FormItem>
+        <div
+            className={
+                role === ROLE_ADMIN
+                    ? 'grid grid-cols-1 gap-6 md:grid-cols-2'
+                    : 'grid grid-cols-1 gap-6'
+            }
+        >
+            {role === ROLE_ADMIN && (
+                <FormItem
+                    label="Tashkilot"
+                    invalid={!!(errors.organizationId && touched.organizationId)}
+                    errorMessage={errors.organizationId as string}
+                >
+                    <Select
+                        options={orgOptions}
+                        placeholder="Tashkilotni tanlang"
+                        value={
+                            orgOptions.find(
+                                (option: Option) =>
+                                    option.value === values.organizationId,
+                            ) || null
+                        }
+                        onChange={(option: any) => {
+                            handleNumericSelectChange(
+                                'organizationId',
+                                option,
+                                {
+                                    setFieldValue,
+                                    setFieldTouched,
+                                    setFieldError,
+                                },
+                            )
+                            setFieldValue('branchId', null, false)
+                        }}
+                        className="shadow-sm"
+                    />
+                </FormItem>
+            )}
 
             <FormItem
-                label="Yuboruvchi Filial"
+                label="Filial"
                 invalid={!!(errors.branchId && touched.branchId)}
                 errorMessage={errors.branchId as string}
             >
                 <Select
                     options={branchOptions}
                     placeholder="Filialni tanlang"
+                    isDisabled={role === ROLE_ADMIN && !values.organizationId}
                     value={
                         branchOptions.find(
                             (option: Option) => option.value === values.branchId,
@@ -359,16 +372,15 @@ const CreatePdf = () => {
     const token = useAccountStore((state) => state.user?.token)
     const role = Number(userProfile?.role || 0)
     const isEmployeeRole = EMPLOYEE_ROLES.includes(role)
+    const isAdminRole = role === ROLE_ADMIN
 
     const {
         myOrganizations,
         myBranches,
         organizationBranches,
-        myBranch,
         fetchMyOrganizations,
         fetchMyBranches,
         fetchMyOrganizationBranches,
-        fetchMyBranch,
     } = useOrganizationStore()
 
     const [activeTab, setActiveTab] = useState('internal')
@@ -406,7 +418,7 @@ const CreatePdf = () => {
                 file: Yup.mixed()
                     .nullable()
                     .required('Fayl yuklanishi shart'),
-                organizationId: isEmployeeRole
+                organizationId: isAdminRole
                     ? Yup.number()
                           .nullable()
                           .typeError('Tashkilot tanlanishi shart')
@@ -420,7 +432,7 @@ const CreatePdf = () => {
                     : Yup.mixed().notRequired(),
                 senderName: Yup.string().nullable(),
             }),
-        [isEmployeeRole],
+        [isAdminRole, isEmployeeRole],
     )
 
     const externalValidationSchema = useMemo(
@@ -432,7 +444,7 @@ const CreatePdf = () => {
                 file: Yup.mixed()
                     .nullable()
                     .required('Fayl yuklanishi shart'),
-                organizationId: isEmployeeRole
+                organizationId: isAdminRole
                     ? Yup.number()
                           .nullable()
                           .typeError('Tashkilot tanlanishi shart')
@@ -445,7 +457,7 @@ const CreatePdf = () => {
                           .required('Filial tanlanishi shart')
                     : Yup.mixed().notRequired(),
             }),
-        [isEmployeeRole],
+        [isAdminRole, isEmployeeRole],
     )
 
     const getHeaders = () => {
@@ -491,21 +503,22 @@ const CreatePdf = () => {
                 setLoadingRegions(false)
             }
 
-            if (isEmployeeRole) {
+            if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+                fetchMyBranches()
+            } else if (role === ROLE_ADMIN) {
                 fetchMyOrganizations()
-
-                if (role === ROLE_WORKER) {
-                    fetchMyBranches()
-                } else if (role === ROLE_BRANCH_DIRECTOR) {
-                    fetchMyBranch()
-                } else if (role === ROLE_ADMIN) {
-                    fetchMyOrganizationBranches()
-                }
+                fetchMyOrganizationBranches()
             }
         }
 
         initData()
-    }, [BASE_URL, isEmployeeRole, role])
+    }, [
+        BASE_URL,
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+        fetchMyOrganizations,
+        role,
+    ])
 
     const fetchAreas = async (regionId: number) => {
         setLoadingAreas(true)
@@ -640,26 +653,32 @@ const CreatePdf = () => {
         [myOrganizations],
     )
 
-    const branchOptions = useMemo(() => {
-        let sourceData: any[] = []
-
-        if (role === ROLE_WORKER) {
-            sourceData = myBranches
-        } else if (role === ROLE_BRANCH_DIRECTOR) {
-            sourceData = myBranch
-                ? Array.isArray(myBranch)
-                    ? myBranch
-                    : [myBranch]
-                : []
-        } else if (role === ROLE_ADMIN) {
-            sourceData = organizationBranches
+    const getBranchOptions = (organizationId: number | null) => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            return myBranches.map((branch) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
         }
 
-        return sourceData.map((branch) => ({
-            value: Number(branch.id),
-            label: branch.name,
-        }))
-    }, [role, myBranches, myBranch, organizationBranches])
+        if (role === ROLE_ADMIN) {
+            if (!organizationId) {
+                return [] as Option[]
+            }
+
+            return organizationBranches
+                .filter(
+                    (branch: any) =>
+                        Number(branch.organizationId) === Number(organizationId),
+                )
+                .map((branch: any) => ({
+                    value: Number(branch.id),
+                    label: branch.name,
+                }))
+        }
+
+        return [] as Option[]
+    }
 
     const inputClass =
         '!border !border-gray-300 !bg-white h-11 rounded-lg focus:!border-indigo-500 dark:!bg-gray-800 dark:!border-gray-600'
@@ -738,7 +757,9 @@ const CreatePdf = () => {
                                                         role={role}
                                                         orgOptions={orgOptions}
                                                         branchOptions={
-                                                            branchOptions
+                                                            getBranchOptions(
+                                                                values.organizationId,
+                                                            )
                                                         }
                                                         values={values}
                                                         errors={errors}
@@ -1066,7 +1087,9 @@ const CreatePdf = () => {
                                                         role={role}
                                                         orgOptions={orgOptions}
                                                         branchOptions={
-                                                            branchOptions
+                                                            getBranchOptions(
+                                                                values.organizationId,
+                                                            )
                                                         }
                                                         values={values}
                                                         errors={errors}

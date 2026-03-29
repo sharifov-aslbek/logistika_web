@@ -15,16 +15,22 @@ import toast from '@/components/ui/toast'
 import { HiOutlineCloudUpload } from 'react-icons/hi'
 import { useTemplateStore } from '@/store/templateStore'
 import { useAccountStore } from '@/store/accountStore'
+import { useOrganizationStore } from '@/store/organizationStore'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
 
 const ROLE_WORKER = 10
 const ROLE_BRANCH_DIRECTOR = 20
 const ROLE_ADMIN = 30
-const EMPLOYEE_ROLES = [ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN]
+const BRANCH_SELECT_ROLES = [ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN]
 
 const EXCEL_ACCEPT =
     '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+
+type Option = {
+    value: number
+    label: string
+}
 
 const HEADER_ALIASES: Record<string, string> = {
     receiver: 'receiver',
@@ -79,23 +85,11 @@ const isMeaningfulValue = (value: unknown) => {
 }
 
 const getInternalRequiredHeaders = (role: number) => {
-    const requiredHeaders = ['receiver', 'address', 'region', 'area']
-
-    if (EMPLOYEE_ROLES.includes(role)) {
-        requiredHeaders.push('branch_id')
-    }
-
-    return requiredHeaders
+    return ['receiver', 'address', 'region', 'area']
 }
 
 const getExternalRequiredHeaders = (role: number) => {
-    const requiredHeaders = ['pinfl_or_inn']
-
-    if (EMPLOYEE_ROLES.includes(role)) {
-        requiredHeaders.push('branch_id')
-    }
-
-    return requiredHeaders
+    return ['pinfl_or_inn']
 }
 
 const readSheetWithHeaders = (
@@ -155,6 +149,82 @@ const readSheetWithHeaders = (
     }
 }
 
+const RegistryOrganizationBranchFields = ({
+    role,
+    values,
+    setFieldValue,
+    orgOptions,
+    branchOptions,
+    isSubmitting,
+}: any) => {
+    if (!BRANCH_SELECT_ROLES.includes(role)) {
+        return null
+    }
+
+    return (
+        <div
+            className={
+                role === ROLE_ADMIN
+                    ? 'grid grid-cols-1 gap-6 md:grid-cols-2'
+                    : 'grid grid-cols-1 gap-6'
+            }
+        >
+            {role === ROLE_ADMIN && (
+                <FormItem
+                    label="Tashkilot"
+                    invalid={isSubmitting && !values.organizationId}
+                    errorMessage="Tashkilot tanlash shart"
+                >
+                    <Select
+                        options={orgOptions}
+                        placeholder="Tashkilotni tanlang"
+                        value={
+                            orgOptions.find(
+                                (option: Option) =>
+                                    option.value === values.organizationId,
+                            ) || null
+                        }
+                        onChange={(option: any) => {
+                            setFieldValue(
+                                'organizationId',
+                                option?.value != null
+                                    ? Number(option.value)
+                                    : null,
+                            )
+                            setFieldValue('branchId', null)
+                        }}
+                        className="rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                    />
+                </FormItem>
+            )}
+
+            <FormItem
+                label="Filial"
+                invalid={isSubmitting && !values.branchId}
+                errorMessage="Filial tanlash shart"
+            >
+                <Select
+                    options={branchOptions}
+                    placeholder="Filialni tanlang"
+                    isDisabled={role === ROLE_ADMIN && !values.organizationId}
+                    value={
+                        branchOptions.find(
+                            (option: Option) => option.value === values.branchId,
+                        ) || null
+                    }
+                    onChange={(option: any) =>
+                        setFieldValue(
+                            'branchId',
+                            option?.value != null ? Number(option.value) : null,
+                        )
+                    }
+                    className="rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                />
+            </FormItem>
+        </div>
+    )
+}
+
 const CreateRegistry = () => {
     const { t } = useTranslation()
     const navigate = useNavigate()
@@ -165,9 +235,20 @@ const CreateRegistry = () => {
         isLoading: isTemplatesLoading,
     } = useTemplateStore()
 
+    const {
+        myOrganizations,
+        myBranches,
+        organizationBranches,
+        fetchMyOrganizations,
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+    } = useOrganizationStore()
+
     const token = useAccountStore((state) => state.user?.token)
     const userProfile = useAccountStore((state) => state.userProfile)
     const role = Number(userProfile?.role || 0)
+    const isAdminRole = role === ROLE_ADMIN
+    const isBranchSelectionRole = BRANCH_SELECT_ROLES.includes(role)
 
     const [activeTab, setActiveTab] = useState('internal')
 
@@ -195,10 +276,56 @@ const CreateRegistry = () => {
         getTemplates()
     }, [getTemplates])
 
+    useEffect(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            fetchMyBranches()
+            return
+        }
+
+        if (isAdminRole) {
+            fetchMyOrganizations()
+            fetchMyOrganizationBranches()
+        }
+    }, [
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+        fetchMyOrganizations,
+        isAdminRole,
+        role,
+    ])
+
     const templateOptions = templates.map((template) => ({
         value: template.name,
         label: template.name,
     }))
+
+    const orgOptions = myOrganizations.map((organization) => ({
+        value: Number(organization.id),
+        label: organization.fullName || organization.shortName,
+    }))
+
+    const getAdminBranchOptions = (organizationId: number | null) => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            return myBranches.map((branch: any) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
+        }
+
+        if (!organizationId) {
+            return [] as Option[]
+        }
+
+        return organizationBranches
+            .filter(
+                (branch: any) =>
+                    Number(branch.organizationId) === Number(organizationId),
+            )
+            .map((branch: any) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
+    }
 
     const isExcelFile = (file: File) => {
         const fileName = file.name.toLowerCase()
@@ -286,6 +413,7 @@ const CreateRegistry = () => {
     const transformInternalDataToApiFormat = (
         rawData: any[],
         templateName: string,
+        selectedBranchId?: number | null,
     ) => {
         const cleanRows = rawData.filter((row) => {
             return row && isMeaningfulValue(row.receiver)
@@ -306,7 +434,11 @@ const CreateRegistry = () => {
                 address: String(address ?? ''),
                 content: JSON.stringify(contentObj),
                 templateName,
-                BranchId: branch_id ? Number(branch_id) : 0,
+                BranchId: selectedBranchId
+                    ? Number(selectedBranchId)
+                    : branch_id
+                      ? Number(branch_id)
+                      : 0,
             }
         })
     }
@@ -314,6 +446,7 @@ const CreateRegistry = () => {
     const transformExternalDataToApiFormat = (
         rawData: any[],
         templateName: string,
+        selectedBranchId?: number | null,
     ) => {
         const cleanRows = rawData.filter((row) => {
             return row && isMeaningfulValue(row.pinfl_or_inn)
@@ -331,7 +464,11 @@ const CreateRegistry = () => {
                 pinflOrInn: String(pinfl_or_inn ?? '').replace(/\D/g, ''),
                 templateName,
                 content: JSON.stringify(contentObj),
-                branchId: branch_id ? Number(branch_id) : 0,
+                branchId: selectedBranchId
+                    ? Number(selectedBranchId)
+                    : branch_id
+                      ? Number(branch_id)
+                      : 0,
             }
         })
     }
@@ -505,6 +642,24 @@ const CreateRegistry = () => {
     const handleInternalSubmit = async (values: any) => {
         if (internalValidationErrors.length > 0) return
 
+        if (isAdminRole && !values.organizationId) {
+            toast.push(
+                <Notification type="warning">
+                    Tashkilot tanlash shart
+                </Notification>,
+            )
+            return
+        }
+
+        if (isBranchSelectionRole && !values.branchId) {
+            toast.push(
+                <Notification type="warning">
+                    Filial tanlash shart
+                </Notification>,
+            )
+            return
+        }
+
         if (internalExcelData.length === 0) {
             toast.push(
                 <Notification type="warning">
@@ -520,7 +675,18 @@ const CreateRegistry = () => {
             mails: transformInternalDataToApiFormat(
                 internalExcelData,
                 values.templateName,
+                values.branchId,
             ),
+            ...(isBranchSelectionRole
+                ? {
+                      BranchId: Number(values.branchId) || 0,
+                  }
+                : {}),
+            ...(isAdminRole
+                ? {
+                      OrganizationId: Number(values.organizationId) || 0,
+                  }
+                : {}),
         }
 
         toast.push(
@@ -563,6 +729,24 @@ const CreateRegistry = () => {
     const handleExternalSubmit = async (values: any) => {
         if (externalValidationErrors.length > 0) return
 
+        if (isAdminRole && !values.organizationId) {
+            toast.push(
+                <Notification type="warning">
+                    Tashkilot tanlash shart
+                </Notification>,
+            )
+            return
+        }
+
+        if (isBranchSelectionRole && !values.branchId) {
+            toast.push(
+                <Notification type="warning">
+                    Filial tanlash shart
+                </Notification>,
+            )
+            return
+        }
+
         if (externalExcelData.length === 0) {
             toast.push(
                 <Notification type="warning">
@@ -578,7 +762,18 @@ const CreateRegistry = () => {
             mails: transformExternalDataToApiFormat(
                 externalExcelData,
                 values.templateName,
+                values.branchId,
             ),
+            ...(isBranchSelectionRole
+                ? {
+                      BranchId: Number(values.branchId) || 0,
+                  }
+                : {}),
+            ...(isAdminRole
+                ? {
+                      OrganizationId: Number(values.organizationId) || 0,
+                  }
+                : {}),
         }
 
         try {
@@ -624,9 +819,45 @@ const CreateRegistry = () => {
                     {t('registry.title', 'Hujjat Reyestri Yaratish')}
                 </h1>
                 <p className="mt-1 text-gray-500 dark:text-gray-400">
-                    Ommaviy hujjat yaratish uchun yuborish turini tanlang
+                    Ommaviy hujjat yaratish uchun yaratish turini tanlang
                 </p>
             </div>
+
+            <Alert showIcon type="warning" className="mb-6" title="Eslatma">
+                {activeTab === 'internal' ? (
+                    <div className="space-y-1 text-sm">
+                        <div>
+                            Majburiy Excel ustunlari: `receiver`, `address`,
+                            `region`, `area`.
+                        </div>
+                        {isBranchSelectionRole && (
+                            <div>
+
+                            </div>
+                        )}
+                        {isAdminRole && (
+                            <div>
+                               
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-1 text-sm">
+                        <div>Majburiy Excel ustuni: `pinfl_or_inn`.</div>
+                        <div>
+                          
+                        </div>
+                        {isBranchSelectionRole && (
+                            <div></div>
+                        )}
+                        {isAdminRole && (
+                            <div>
+                               
+                            </div>
+                        )}
+                    </div>
+                )}
+            </Alert>
 
             <Tabs
                 value={activeTab}
@@ -654,13 +885,26 @@ const CreateRegistry = () => {
                         initialValues={{
                             templateName: '',
                             file: null,
+                            organizationId: null,
+                            branchId: null,
                         }}
                         onSubmit={handleInternalSubmit}
                     >
-                        {({ values }) => (
+                        {({ values, setFieldValue }) => (
                             <Form>
                                 <FormContainer>
                                     <div className="flex flex-col gap-6">
+                                        <RegistryOrganizationBranchFields
+                                            role={role}
+                                            values={values}
+                                            setFieldValue={setFieldValue}
+                                            orgOptions={orgOptions}
+                                            branchOptions={getAdminBranchOptions(
+                                                values.organizationId,
+                                            )}
+                                            isSubmitting={isSubmitting}
+                                        />
+
                                         <FormItem
                                             label="Shablon turi"
                                             invalid={
@@ -826,13 +1070,26 @@ const CreateRegistry = () => {
                         initialValues={{
                             templateName: '',
                             file: null,
+                            organizationId: null,
+                            branchId: null,
                         }}
                         onSubmit={handleExternalSubmit}
                     >
-                        {({ values }) => (
+                        {({ values, setFieldValue }) => (
                             <Form>
                                 <FormContainer>
                                     <div className="flex flex-col gap-6">
+                                        <RegistryOrganizationBranchFields
+                                            role={role}
+                                            values={values}
+                                            setFieldValue={setFieldValue}
+                                            orgOptions={orgOptions}
+                                            branchOptions={getAdminBranchOptions(
+                                                values.organizationId,
+                                            )}
+                                            isSubmitting={isSubmitting}
+                                        />
+
                                         <FormItem
                                             label="Shablon turi"
                                             invalid={
@@ -878,7 +1135,7 @@ const CreateRegistry = () => {
                                         </FormItem>
 
                                         <FormItem
-                                            label="Tashqi reyestr (Excel)"
+                                            label="Pinfl / Inn reyestr (Excel)"
                                             invalid={!values.file && isSubmitting}
                                             errorMessage="Fayl yuklash shart"
                                         >
@@ -930,6 +1187,7 @@ const CreateRegistry = () => {
 
                                                             <div className="mt-2 text-sm text-gray-400">
                                                                 Excel ichida
+                                                                `pinfl_or_inn`
                                                                 va kerakli
                                                                 content
                                                                 ustunlari
