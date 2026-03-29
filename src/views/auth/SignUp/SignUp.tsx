@@ -1,11 +1,9 @@
-import { useState } from 'react'
 import Logo from '@/components/template/Logo'
 import Alert from '@/components/ui/Alert'
 import SignUpForm from './components/SignUpForm'
 import ActionLink from '@/components/shared/ActionLink'
 import useTimeOutMessage from '@/utils/hooks/useTimeOutMessage'
 import { useThemeStore } from '@/store/themeStore'
-import { HiArrowLeft } from 'react-icons/hi'
 
 type SignUpProps = {
     disableSubmit?: boolean
@@ -17,77 +15,83 @@ export const SignUpBase = ({
     disableSubmit,
 }: SignUpProps) => {
     const [message, setMessage] = useTimeOutMessage()
-
-    // Lift state up to control the "Back" button and Titles in this wrapper
-    const [currentStep, setCurrentStep] = useState<
-        'selection' | 'verification' | 'account'
-    >('selection')
-
     const mode = useThemeStore((state) => state.mode)
 
-    const handleResetFlow = () => {
-        setCurrentStep('selection')
-    }
-
     return (
-        <div className="relative">
-            {/* Back Button: Only show if not on the first step */}
-            {currentStep !== 'selection' && (
-                <button
-                    onClick={handleResetFlow}
-                    className="absolute top-0 left-0 -mt-2 -ml-2 p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-xl"
-                >
-                    <HiArrowLeft />
-                </button>
-            )}
-
-            {/* LOGO: Added flex justify-center to ensure strict centering */}
+        <div className="mx-auto w-full max-w-[680px] px-4 py-6">
             <div className="mb-8 flex justify-center">
                 <Logo
                     type="streamline"
                     mode={mode}
                     imgClass="mx-auto"
-                    logoWidth={120}
+                    logoWidth={118}
                 />
             </div>
 
-            {/* HEADER TEXT: Hidden on 'selection' step to avoid duplication */}
-            {currentStep !== 'selection' && (
-                <div className="mb-8 text-center">
-                    <h3 className="mb-1">Ro'yxatdan o'tish</h3>
-                    <p className="font-semibold heading-text">
-                        Ma'lumotlaringizni to'ldiring
-                    </p>
+            <div className="mb-8 text-center">
+                <h1 className="text-2xl font-extrabold text-gray-900 dark:text-gray-50">
+                    Ro&apos;yxatdan o&apos;tish
+                </h1>
+                <p className="mt-4 text-sm font-semibold text-gray-600 dark:text-gray-300">
+                    Rolni tanlang, E-IMZO bilan tasdiqlang va akkaunt yarating
+                </p>
+            </div>
+
+            {/* <div className="mb-6 rounded-[28px] border border-[#dbe7ff] bg-[linear-gradient(135deg,rgba(71,133,255,0.14),rgba(255,255,255,0.95))] p-5 shadow-[0_24px_60px_-40px_rgba(71,133,255,0.75)] dark:border-blue-500/30 dark:bg-[linear-gradient(135deg,rgba(59,130,246,0.24),rgba(15,23,42,0.9))]">
+                <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#4785ff] text-white shadow-lg shadow-blue-500/25">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="22"
+                            height="22"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        >
+                            <path d="M12 15V3"></path>
+                            <path d="m8 7 4-4 4 4"></path>
+                            <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 16.25"></path>
+                            <path d="M8 16h8"></path>
+                            <path d="M8 20h8"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <div className="text-lg font-extrabold text-gray-900 dark:text-gray-50">
+                            Yangi akkaunt E-IMZO bilan tasdiqlanadi
+                        </div>
+                        <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
+                            Foydalanuvchi yoki direktor rolini tanlaysiz,
+                            sertifikatni belgilaysiz va tizim sizni avtomatik
+                            kirgizadi.
+                        </p>
+                    </div>
                 </div>
-            )}
+            </div> */}
 
             {message && (
-                <Alert showIcon className="mb-4" type="danger">
+                <Alert showIcon className="mb-6" type="danger">
                     <span className="break-all">{message}</span>
                 </Alert>
             )}
 
-            {/* FORM: We pass the step state down so the form can control the flow */}
             <SignUpForm
                 disableSubmit={disableSubmit}
                 setMessage={setMessage}
-                // @ts-ignore - Ensure your SignUpForm props match these names
-                currentStep={currentStep}
-                setCurrentStep={setCurrentStep}
             />
 
-            {currentStep === 'selection' && (
-                <div className="mt-6 text-center">
-                    <span>Akauntingiz bormi? </span>
-                    <ActionLink
-                        to={signInUrl}
-                        className="heading-text font-bold"
-                        themeColor={false}
-                    >
-                        Kirish
-                    </ActionLink>
-                </div>
-            )}
+            <div className="mt-6 text-center text-sm">
+                <span className="text-gray-500">Akkauntingiz bormi? </span>
+                <ActionLink
+                    to={signInUrl}
+                    className="heading-text font-bold text-blue-600 hover:text-blue-500"
+                    themeColor={false}
+                >
+                    Kirish
+                </ActionLink>
+            </div>
         </div>
     )
 }
