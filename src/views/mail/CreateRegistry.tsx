@@ -639,13 +639,13 @@ const CreateRegistry = () => {
                         value="internal"
                         className="px-1 py-3 text-sm font-semibold"
                     >
-                        Ichki reyestr
+                        Reyestr yaratish
                     </Tabs.TabNav>
                     <Tabs.TabNav
                         value="external"
                         className="px-1 py-3 text-sm font-semibold"
                     >
-                        Tashqi reyestr
+                        Pinfl/Inn bo'yicha yaratish
                     </Tabs.TabNav>
                 </Tabs.TabList>
 
