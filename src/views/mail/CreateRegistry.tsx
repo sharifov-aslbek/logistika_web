@@ -65,8 +65,8 @@ const HEADER_ALIASES: Record<string, string> = {
     pinfl_or_inn: 'pinfl_or_inn',
     pinflorinn: 'pinfl_or_inn',
     pinfl_inn: 'pinfl_or_inn',
-    pinfl: 'pinfl_or_inn',
-    inn: 'pinfl_or_inn',
+    pinfl: 'pinfl',
+    inn: 'inn',
 }
 
 const normalizeHeaderKey = (header: string) => {
@@ -89,7 +89,29 @@ const getInternalRequiredHeaders = (role: number) => {
 }
 
 const getExternalRequiredHeaders = (role: number) => {
-    return ['pinfl_or_inn']
+    return []
+}
+
+const getNormalizedExternalIdentifiers = (row: Record<string, any>) => {
+    const pinfl = String(row.pinfl ?? '').replace(/\D/g, '')
+    const inn = String(row.inn ?? '').replace(/\D/g, '')
+    const legacyPinflOrInn = String(row.pinfl_or_inn ?? '').replace(/\D/g, '')
+    const orderedKeys = Object.keys(row).filter((key) =>
+        ['pinfl', 'inn', 'pinfl_or_inn'].includes(key),
+    )
+    const preferredKey = orderedKeys[0] || 'pinfl_or_inn'
+
+    return {
+        pinfl,
+        inn,
+        preferredKey,
+        pinflOrInn:
+            preferredKey === 'pinfl'
+                ? pinfl
+                : preferredKey === 'inn'
+                  ? inn
+                  : legacyPinflOrInn,
+    }
 }
 
 const readSheetWithHeaders = (
@@ -382,27 +404,53 @@ const CreateRegistry = () => {
 
     const validateExternalExcelData = (data: any[]) => {
         const errors: string[] = []
-        const requiredFields = getExternalRequiredHeaders(role)
+        const hasPinflHeader = data.some((row) =>
+            Object.prototype.hasOwnProperty.call(row, 'pinfl'),
+        )
+        const hasInnHeader = data.some((row) =>
+            Object.prototype.hasOwnProperty.call(row, 'inn'),
+        )
+        const hasLegacyHeader = data.some((row) =>
+            Object.prototype.hasOwnProperty.call(row, 'pinfl_or_inn'),
+        )
+
+        if (!hasPinflHeader && !hasInnHeader && !hasLegacyHeader) {
+            return [
+                "Excel faylda `pinfl` yoki `inn` nomli header bo'lishi kerak",
+            ]
+        }
 
         data.forEach((row, index) => {
             const rowNumber = index + 3
-            const pinflOrInn = String(row.pinfl_or_inn ?? '').replace(/\D/g, '')
+            const { pinfl, inn, pinflOrInn, preferredKey } =
+                getNormalizedExternalIdentifiers(row)
 
             if (!pinflOrInn) {
-                errors.push(`Qator ${rowNumber}: "pinfl_or_inn" ustuni bo'sh`)
-            } else if (pinflOrInn.length !== 9 && pinflOrInn.length !== 14) {
                 errors.push(
-                    `Qator ${rowNumber}: "pinfl_or_inn" 9 yoki 14 ta raqam bo'lishi kerak`,
+                    `Qator ${rowNumber}: "${preferredKey}" ustuni bo'sh`,
                 )
             }
 
-            const missingCols = requiredFields.filter((field) => {
-                return row[field] == null || String(row[field]).trim() === ''
-            })
-
-            if (missingCols.length > 0) {
+            if (preferredKey === 'pinfl' && pinfl && pinfl.length !== 14) {
                 errors.push(
-                    `Qator ${rowNumber}: To'ldirilmagan ustunlar: ${missingCols.join(', ')}`,
+                    `Qator ${rowNumber}: "pinfl" 14 ta raqam bo'lishi kerak`,
+                )
+            }
+
+            if (preferredKey === 'inn' && inn && inn.length !== 9) {
+                errors.push(
+                    `Qator ${rowNumber}: "inn" 9 ta raqam bo'lishi kerak`,
+                )
+            }
+
+            if (
+                preferredKey === 'pinfl_or_inn' &&
+                pinflOrInn &&
+                pinflOrInn.length !== 9 &&
+                pinflOrInn.length !== 14
+            ) {
+                errors.push(
+                    `Qator ${rowNumber}: "pinfl_or_inn" 9 yoki 14 ta raqam bo'lishi kerak`,
                 )
             }
         })
@@ -449,19 +497,22 @@ const CreateRegistry = () => {
         selectedBranchId?: number | null,
     ) => {
         const cleanRows = rawData.filter((row) => {
-            return row && isMeaningfulValue(row.pinfl_or_inn)
+            const { pinflOrInn } = getNormalizedExternalIdentifiers(row)
+
+            return row && isMeaningfulValue(pinflOrInn)
         })
 
         return cleanRows.map((row) => {
-            const { pinfl_or_inn, branch_id, ...rest } = row
+            const { pinfl, inn, pinfl_or_inn, branch_id, ...rest } = row
             const contentObj: Record<string, string> = {}
+            const normalizedIdentifiers = getNormalizedExternalIdentifiers(row)
 
             Object.keys(rest).forEach((key) => {
                 contentObj[key] = String(rest[key] ?? '')
             })
 
             return {
-                pinflOrInn: String(pinfl_or_inn ?? '').replace(/\D/g, ''),
+                pinflOrInn: normalizedIdentifiers.pinflOrInn,
                 templateName,
                 content: JSON.stringify(contentObj),
                 branchId: selectedBranchId
@@ -823,42 +874,6 @@ const CreateRegistry = () => {
                 </p>
             </div>
 
-            <Alert showIcon type="warning" className="mb-6" title="Eslatma">
-                {activeTab === 'internal' ? (
-                    <div className="space-y-1 text-sm">
-                        <div>
-                            Majburiy Excel ustunlari: `receiver`, `address`,
-                            `region`, `area`.
-                        </div>
-                        {isBranchSelectionRole && (
-                            <div>
-
-                            </div>
-                        )}
-                        {isAdminRole && (
-                            <div>
-                               
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="space-y-1 text-sm">
-                        <div>Majburiy Excel ustuni: `pinfl_or_inn`.</div>
-                        <div>
-                          
-                        </div>
-                        {isBranchSelectionRole && (
-                            <div></div>
-                        )}
-                        {isAdminRole && (
-                            <div>
-                               
-                            </div>
-                        )}
-                    </div>
-                )}
-            </Alert>
-
             <Tabs
                 value={activeTab}
                 onChange={(value) => setActiveTab(String(value))}
@@ -1003,6 +1018,15 @@ const CreateRegistry = () => {
                                                             <div className="mt-2 text-sm text-gray-400">
                                                                 Excel (.xlsx,
                                                                 .xls)
+                                                            </div>
+
+                                                            <div className="mt-3 max-w-xl text-center text-xs font-medium text-amber-500 dark:text-amber-300">
+                                                                Majburiy Excel
+                                                                ustunlari:
+                                                                `receiver`,
+                                                                `address`,
+                                                                `region`,
+                                                                `area`.
                                                             </div>
                                                         </div>
                                                     </Upload>
@@ -1187,11 +1211,27 @@ const CreateRegistry = () => {
 
                                                             <div className="mt-2 text-sm text-gray-400">
                                                                 Excel ichida
-                                                                `pinfl_or_inn`
-                                                                va kerakli
+                                                                `pinfl` yoki
+                                                                `inn` va
+                                                                kerakli
                                                                 content
                                                                 ustunlari
                                                                 bo'lishi kerak
+                                                            </div>
+
+                                                            <div className="mt-3 max-w-xl text-center text-xs font-medium text-amber-500 dark:text-amber-300">
+                                                                Majburiy Excel
+                                                                headerlari:
+                                                                `pinfl` yoki
+                                                                `inn`.
+                                                                `pinfl` 14 ta,
+                                                                `inn` 9 ta
+                                                                raqam bo'lishi
+                                                                kerak. Ikkalasi
+                                                                ham bo'lsa,
+                                                                birinchi turgan
+                                                                ustun qiymati
+                                                                olinadi.
                                                             </div>
                                                         </div>
                                                     </Upload>

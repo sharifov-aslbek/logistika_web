@@ -167,58 +167,153 @@ const MailDetails = () => {
     }
 
     // --- Render Helpers ---
-    const renderPerformStatus = (perform: any) => {
-        if (!perform)
+    const getPerformMeta = (performType?: string) => {
+        if (!performType) {
+            return {
+                label: "Ma'lumot yo'q",
+                className: 'bg-gray-100 text-gray-600 border-0',
+            }
+        }
+
+        if (
+            performType === 'Delivered' ||
+            performType === 'SuccessDelivered'
+        ) {
+            return {
+                label: 'Доставлен',
+                className: 'bg-emerald-100 text-emerald-700 border-0',
+            }
+        }
+
+        if (performType === 'ReceiverDead') {
+            return {
+                label: 'Адресат умер (Олувчи вафот этган)',
+                className: 'bg-red-100 text-red-700 border-0',
+            }
+        }
+
+        if (performType === 'ReceiverNotLivesThere') {
+            return {
+                label: 'Адресат по указанному адресу не проживает (Олувчи кўрсатилган манзилда яшамайди)',
+                className: 'bg-amber-100 text-amber-700 border-0',
+            }
+        }
+
+        if (performType === 'IncompleteAddress') {
+            return {
+                label: 'Указан не полный адрес (Тўлиқ манзил кўрсатилмаган)',
+                className: 'bg-amber-100 text-amber-700 border-0',
+            }
+        }
+
+        if (
+            performType === 'ReceiverRefused' ||
+            performType === 'ReceiverRefuse'
+        ) {
+            return {
+                label: 'Адресат от получения отказался (Олувчи қабул қилишдан бош тортди)',
+                className: 'bg-red-100 text-red-700 border-0',
+            }
+        }
+
+        if (
+            performType === 'ReceiverNotAtHome' ||
+            performType === 'NotAtHome'
+        ) {
+            return {
+                label: 'Нет дома (Уйда йўқ)',
+                className: 'bg-slate-100 text-slate-700 border-0',
+            }
+        }
+
+        if (performType === 'ReceiverDidntAppearOnNotice') {
+            return {
+                label: 'Не явился по извещению (Хабарнома қолдирилди олувчи келмади)',
+                className: 'bg-indigo-100 text-indigo-700 border-0',
+            }
+        }
+
+        if (performType === 'InvalidAddress') {
+            return {
+                label: 'Адрес не определен (Манзил аниқланмади)',
+                className: 'bg-orange-100 text-orange-700 border-0',
+            }
+        }
+
+        if (performType === 'TryPerform') {
+            return {
+                label: 'Попытка вручения',
+                className: 'bg-blue-100 text-blue-700 border-0',
+            }
+        }
+
+        if (performType === 'OrganizationWithGivenAddressNotFound') {
+            return {
+                label: 'По указанному адресу организация не найдена (Кўрсатилган манзилдан ташкилот топилмади)',
+                className: 'bg-orange-100 text-orange-700 border-0',
+            }
+        }
+
+        return {
+            label: performType,
+            className: 'bg-gray-100 text-gray-700 border-0',
+        }
+    }
+
+    const getPerformKey = (perform: any, index = 0) => {
+        return [
+            perform?.performType || perform?.PerformType || 'unknown',
+            perform?.performedOn || perform?.PerformedOn || '',
+            perform?.note || '',
+            perform?.courier || '',
+            perform?.postIndex || '',
+            index,
+        ].join('-')
+    }
+
+    const renderPerformTag = (perform: any, index = 0) => {
+        const performType = perform?.performType || perform?.PerformType
+        const meta = getPerformMeta(performType)
+
+        return (
+            <Tag key={getPerformKey(perform, index)} className={meta.className}>
+                {meta.label}
+            </Tag>
+        )
+    }
+
+    const renderMailStatus = (mailData: any) => {
+        if (!mailData.isSend) {
             return (
-                <Tag className="bg-orange-100 text-orange-600 border-0">
-                    Mavjud emas
+                <Tag className="bg-gray-100 text-gray-600 border-0">
+                    {mailData.isPendingSignature
+                        ? 'Imzolanish kutilmoqda'
+                        : 'Qoralama (Yuborilmagan)'}
                 </Tag>
             )
-        const type = perform.PerformType
-        switch (type) {
-            case 'SuccessDelivered':
-                return (
-                    <Tag className="bg-green-100 text-green-600 border-0">
-                        Muvaffaqiyatli yetkazildi
-                    </Tag>
-                )
-            case 'ReceiverDead':
-                return (
-                    <Tag className="bg-red-100 text-red-600 border-0">
-                        Qabul qiluvchi vafot etgan
-                    </Tag>
-                )
-            case 'ReceiverNotLivesThere':
-                return (
-                    <Tag className="bg-yellow-100 text-yellow-600 border-0">
-                        Bu yerda yashamaydi
-                    </Tag>
-                )
-            case 'IncompleteAddress':
-                return (
-                    <Tag className="bg-yellow-100 text-yellow-600 border-0">
-                        Manzil to'liq emas
-                    </Tag>
-                )
-            case 'ReceiverRefuse':
-                return (
-                    <Tag className="bg-red-100 text-red-600 border-0">
-                        Rad etdi
-                    </Tag>
-                )
-            case 'NotAtHome':
-                return (
-                    <Tag className="bg-gray-100 text-gray-600 border-0">
-                        Uyda yo'q
-                    </Tag>
-                )
-            default:
-                return (
-                    <Tag className="bg-orange-100 text-orange-600 border-0">
-                        Noma'lum
-                    </Tag>
-                )
         }
+
+        const activePerform = mailData.activePerform || mailData.ActivePerform
+        const performs = Array.isArray(mailData.performs) ? mailData.performs : []
+        const activePerformKey = activePerform ? getPerformKey(activePerform) : ''
+        const historyPerforms = performs.filter(
+            (perform, index) => getPerformKey(perform, index) !== activePerformKey,
+        )
+        const hasAnyPerform = Boolean(activePerform) || historyPerforms.length > 0
+
+        return (
+            <div className="flex flex-wrap gap-2">
+                {!hasAnyPerform && (
+                    <Tag className="bg-blue-100 text-blue-700 border-0">
+                        Yuborilgan
+                    </Tag>
+                )}
+                {activePerform && renderPerformTag(activePerform)}
+                {historyPerforms.map((perform, index) =>
+                    renderPerformTag(perform, index + 1),
+                )}
+            </div>
+        )
     }
 
     // --- NEW: Render Signers List ---
@@ -339,15 +434,7 @@ const MailDetails = () => {
                         <div className="text-gray-500 font-medium mb-1">
                             Holat:
                         </div>
-                        {!mail.isSend ? (
-                            <Tag className="bg-gray-100 text-gray-600 border-0">
-                                {mail.isPendingSignature
-                                    ? 'Imzolanish kutilmoqda'
-                                    : 'Qoralama (Yuborilmagan)'}
-                            </Tag>
-                        ) : (
-                            renderPerformStatus(mail.ActivePerform)
-                        )}
+                        {renderMailStatus(mail)}
                     </div>
                 </div>
 

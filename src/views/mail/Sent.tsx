@@ -33,53 +33,68 @@ const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
 
 // --- Helper Component: Status Tag ---
 const StatusTag = ({ row }: { row: any }) => {
+    const tagBaseClass =
+        'border-0 rounded-lg px-2 py-1 text-[11px] leading-4 text-center whitespace-normal break-words max-w-[260px]'
+
     if (!row.isSend) {
         return (
-            <Tag className="bg-gray-100 text-gray-600 border-0 rounded-full">
+            <Tag className={`${tagBaseClass} bg-gray-100 text-gray-600`}>
                 Qoralama
             </Tag>
         )
     }
 
-    if (row.activePerformId != null && row.activePerform != null) {
-        const performType = row.activePerform.performType
-        let label = ''
-        let className = ''
+    const performType = row.activePerform?.performType
+    let label = "Ma'lumot yo'q"
+    let className = `${tagBaseClass} bg-slate-100 text-slate-600`
 
-        switch (performType) {
-            case 'SuccessDelivered':
-                label = 'Yetkazib berildi'
-                className =
-                    'bg-emerald-100 text-emerald-600 border-0 rounded-full'
-                break
-            case 'ReceiverDead':
-                label = 'Qabul qiluvchi vafot etgan'
-                className = 'bg-red-100 text-red-600 border-0 rounded-full'
-                break
-            case 'ReceiverNotLivesThere':
-            case 'IncompleteAddress':
-                label =
-                    performType === 'IncompleteAddress'
-                        ? "Manzil to'liq emas"
-                        : 'Bu manzilda yashamaydi'
-                className = 'bg-amber-100 text-amber-600 border-0 rounded-full'
-                break
-            case 'ReceiverRefuse':
-                label = 'Rad etildi'
-                className = 'bg-red-100 text-red-600 border-0 rounded-full'
-                break
-            default:
-                label = "Ma'lumot yo'q"
-                className = 'bg-gray-100 text-gray-500 border-0 rounded-full'
-        }
-        return <Tag className={className}>{label}</Tag>
+    switch (performType) {
+        case 'Delivered':
+        case 'SuccessDelivered':
+            label = 'Доставлен'
+            className = `${tagBaseClass} bg-emerald-100 text-emerald-700`
+            break
+        case 'ReceiverDead':
+            label = 'Олувчи вафот этган'
+            className = `${tagBaseClass} bg-red-100 text-red-700`
+            break
+        case 'ReceiverNotLivesThere':
+            label = 'Олувчи кўрсатилган манзилда яшамайди'
+            className = `${tagBaseClass} bg-amber-100 text-amber-700`
+            break
+        case 'IncompleteAddress':
+            label = 'Тўлиқ манзил кўрсатилмаган'
+            className = `${tagBaseClass} bg-amber-100 text-amber-700`
+            break
+        case 'ReceiverRefused':
+        case 'ReceiverRefuse':
+            label = 'Олувчи қабул қилишдан бош тортди'
+            className = `${tagBaseClass} bg-red-100 text-red-700`
+            break
+        case 'ReceiverNotAtHome':
+        case 'NotAtHome':
+            label = 'Уйда йўқ'
+            className = `${tagBaseClass} bg-slate-100 text-slate-700`
+            break
+        case 'ReceiverDidntAppearOnNotice':
+            label = 'Хабарнома қолдирилди олувчи келмади'
+            className = `${tagBaseClass} bg-indigo-100 text-indigo-700`
+            break
+        case 'InvalidAddress':
+            label = 'Манзил аниқланмади'
+            className = `${tagBaseClass} bg-orange-100 text-orange-700`
+            break
+        case 'TryPerform':
+            label = 'Попытка вручения'
+            className = `${tagBaseClass} bg-blue-100 text-blue-700`
+            break
+        case 'OrganizationWithGivenAddressNotFound':
+            label = 'Кўрсатилган манзилдан ташкилот топилмади'
+            className = `${tagBaseClass} bg-orange-100 text-orange-700`
+            break
     }
 
-    return (
-        <Tag className="bg-blue-100 text-blue-600 border-0 rounded-full">
-            Yuborilgan
-        </Tag>
-    )
+    return <Tag className={className}>{label}</Tag>
 }
 
 const SentMails = () => {
