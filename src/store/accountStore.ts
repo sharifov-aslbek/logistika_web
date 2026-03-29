@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import axios from 'axios'
+import extractApiErrorMessage from '@/utils/extractApiErrorMessage'
 
 // 1. Setup API URL
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
@@ -11,6 +12,7 @@ console.log('🔌 Store Loaded. API URL:', BASE_URL)
 const publicApiConfig = {
     headers: {
         'Content-Type': 'application/json',
+        accept: '*/*',
         'ngrok-skip-browser-warning': 'true', // Added for Ngrok
     },
 }
@@ -34,6 +36,60 @@ interface LoginPayload {
     password: string
 }
 
+interface EimzoLoginPayload {
+    signature: string
+}
+
+interface RegisterPayload {
+    signature: string
+    phone: string
+    password: string
+}
+
+const extractAccessToken = (data: any) => {
+    return (
+        data?.data?.access_token ||
+        data?.data?.accessToken ||
+        data?.data?.token ||
+        data?.access_token ||
+        data?.accessToken ||
+        data?.token ||
+        null
+    )
+}
+
+const hasFailedResponse = (data: any) => {
+    if (!data) return false
+
+    if (typeof data.code === 'number' && data.code >= 400) {
+        return true
+    }
+
+    if (typeof data.status === 'number' && data.status >= 400) {
+        return true
+    }
+
+    if (
+        typeof data.status === 'string' &&
+        ['error', 'failed', 'fail'].includes(data.status.toLowerCase())
+    ) {
+        return true
+    }
+
+    if (data.success === false) {
+        return true
+    }
+
+    return false
+}
+
+const createApiError = (data: any, fallback: string) => {
+    const message = extractApiErrorMessage(data, fallback)
+    const error = new Error(message) as Error & { response?: { data: any } }
+    error.response = { data }
+    return error
+}
+
 interface AccountState {
     user: User | null
     userProfile: UserProfile
@@ -42,12 +98,14 @@ interface AccountState {
 
     // Actions
     login: (loginInfo: LoginPayload) => Promise<boolean>
+    loginWithPassword: (loginInfo: LoginPayload) => Promise<boolean>
+    loginWithEimzo: (payload: EimzoLoginPayload) => Promise<boolean>
     getProfile: () => Promise<void>
     logout: () => void
     getPersonByPinfl: (pinfl: string) => Promise<any>
     getCompanyByInn: (inn: string) => Promise<any>
-    registerUser: (payload: any) => Promise<boolean>
-    registerDirector: (payload: any) => Promise<boolean>
+    registerUser: (payload: RegisterPayload) => Promise<boolean>
+    registerDirector: (payload: RegisterPayload) => Promise<boolean>
 
     // Helpers
     isAuthenticated: () => boolean
@@ -76,12 +134,16 @@ export const useAccountStore = create<AccountState>()(
             // --- Actions ---
 
             login: async (loginInfo) => {
+                return get().loginWithPassword(loginInfo)
+            },
+
+            loginWithPassword: async (loginInfo) => {
                 console.log('1️⃣ [Store] Login Action Called', loginInfo)
 
                 set({ isLoading: true, loginFailed: false })
 
                 try {
-                    const url = `${BASE_URL}/auth/login`
+                    const url = `${BASE_URL}/auth/login/password`
                     console.log('2️⃣ [Store] POST request to:', url)
 
                     const response = await axios.post(
@@ -92,21 +154,84 @@ export const useAccountStore = create<AccountState>()(
 
                     console.log('3️⃣ [Store] Response:', response)
                     const data = response.data
+                    const accessToken = extractAccessToken(data)
 
-                    if (data?.code === 200 && data?.data?.access_token) {
+                    if (accessToken) {
                         console.log('✅ [Store] Success! Token saved.')
-                        set({ user: { token: data.data.access_token } })
+                        set({ user: { token: accessToken }, loginFailed: false })
                         return true
                     }
 
+                    if (hasFailedResponse(data)) {
+                        set({ loginFailed: true })
+                        throw createApiError(
+                            data,
+                            "Login qilishda xatolik yuz berdi",
+                        )
+                    }
+
                     console.warn(
-                        '⚠️ [Store] Login Failed (Code not 200):',
+                        '⚠️ [Store] Login Failed (No token in response):',
                         data,
                     )
                     set({ loginFailed: true })
-                    return false
+                    throw createApiError(
+                        data,
+                        "Login qilishda xatolik yuz berdi",
+                    )
                 } catch (error: any) {
                     console.error('❌ [Store] Request Failed:', error)
+                    set({ loginFailed: true })
+                    throw error
+                } finally {
+                    set({ isLoading: false })
+                }
+            },
+
+            loginWithEimzo: async ({ signature }) => {
+                console.log('1️⃣ [Store] E-IMZO Login Action Called')
+
+                set({ isLoading: true, loginFailed: false })
+
+                try {
+                    const url = `${BASE_URL}/auth/login/eimzo`
+                    console.log('2️⃣ [Store] POST request to:', url)
+
+                    const response = await axios.post(
+                        url,
+                        { signature },
+                        publicApiConfig,
+                    )
+
+                    console.log('3️⃣ [Store] Response:', response)
+                    const data = response.data
+                    const accessToken = extractAccessToken(data)
+
+                    if (accessToken) {
+                        console.log('✅ [Store] E-IMZO login success! Token saved.')
+                        set({ user: { token: accessToken }, loginFailed: false })
+                        return true
+                    }
+
+                    if (hasFailedResponse(data)) {
+                        set({ loginFailed: true })
+                        throw createApiError(
+                            data,
+                            "E-IMZO orqali kirishda xatolik yuz berdi",
+                        )
+                    }
+
+                    console.warn(
+                        '⚠️ [Store] E-IMZO Login Failed (No token in response):',
+                        data,
+                    )
+                    set({ loginFailed: true })
+                    throw createApiError(
+                        data,
+                        "E-IMZO orqali kirishda xatolik yuz berdi",
+                    )
+                } catch (error: any) {
+                    console.error('❌ [Store] E-IMZO Request Failed:', error)
                     set({ loginFailed: true })
                     throw error
                 } finally {
@@ -183,15 +308,28 @@ export const useAccountStore = create<AccountState>()(
                         payload,
                         publicApiConfig,
                     )
-                    if (response.data?.code === 200) {
-                        return await get().login({
-                            phone: payload.phone,
-                            password: payload.password,
-                        })
+                    const data = response.data
+
+                    if (hasFailedResponse(data)) {
+                        throw createApiError(
+                            data,
+                            "Ro'yxatdan o'tishda xatolik yuz berdi",
+                        )
                     }
-                    return false
+
+                    const accessToken = extractAccessToken(data)
+
+                    if (accessToken) {
+                        set({ user: { token: accessToken }, loginFailed: false })
+                        return true
+                    }
+
+                    return await get().loginWithPassword({
+                        phone: payload.phone,
+                        password: payload.password,
+                    })
                 } catch (error) {
-                    return false
+                    throw error
                 } finally {
                     set({ isLoading: false })
                 }
@@ -205,15 +343,28 @@ export const useAccountStore = create<AccountState>()(
                         payload,
                         publicApiConfig,
                     )
-                    if (response.data?.code === 200) {
-                        return await get().login({
-                            phone: payload.phone,
-                            password: payload.password,
-                        })
+                    const data = response.data
+
+                    if (hasFailedResponse(data)) {
+                        throw createApiError(
+                            data,
+                            "Ro'yxatdan o'tishda xatolik yuz berdi",
+                        )
                     }
-                    return false
+
+                    const accessToken = extractAccessToken(data)
+
+                    if (accessToken) {
+                        set({ user: { token: accessToken }, loginFailed: false })
+                        return true
+                    }
+
+                    return await get().loginWithPassword({
+                        phone: payload.phone,
+                        password: payload.password,
+                    })
                 } catch (error) {
-                    return false
+                    throw error
                 } finally {
                     set({ isLoading: false })
                 }

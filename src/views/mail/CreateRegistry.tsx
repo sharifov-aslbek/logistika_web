@@ -452,6 +452,7 @@ const CreateRegistry = () => {
                                             <Select
                                                 field={field}
                                                 form={form}
+                                                className="rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800"
                                                 options={templateOptions}
                                                 isLoading={isTemplatesLoading}
                                                 placeholder={
