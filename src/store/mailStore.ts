@@ -49,6 +49,7 @@ export type MailState = {
 
     // Actions
     createMail: (formData: FormData) => Promise<boolean>
+    createExternalMail: (formData: FormData) => Promise<boolean>
     createRegistry: (formData: FormData) => Promise<boolean>
     getAllMails: (filters?: any) => Promise<void>
     getMailByUid: (uid: string) => void
@@ -94,7 +95,26 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 2. Create Registry
+    // 2. Create External Mail
+    createExternalMail: async (formData: FormData) => {
+        set({ isLoading: true })
+        try {
+            await axios.post(`${BASE_URL}/mail/external`, formData, {
+                headers: {
+                    ...getAuthHeaders(),
+                    'Content-Type': 'multipart/form-data',
+                },
+            })
+            return true
+        } catch (error) {
+            console.error('Create External Mail Error:', error)
+            return false
+        } finally {
+            set({ isLoading: false })
+        }
+    },
+
+    // 3. Create Registry
     createRegistry: async (formData: FormData) => {
         set({ isLoading: true })
         try {
@@ -113,7 +133,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 3. Get All Mails
+    // 4. Get All Mails
     getAllMails: async (filters = {}) => {
         set({ isLoading: true })
         try {
@@ -188,7 +208,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 4. Get Single Mail Local
+    // 5. Get Single Mail Local
     getMailByUid: (uid: string) => {
         const { mails } = get()
         if (mails.length > 0) {
@@ -197,7 +217,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 5. Update Mail
+    // 6. Update Mail
     updateMail: async (uid: string, payload: any) => {
         set({ isLoading: true })
         try {
@@ -219,7 +239,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 6. Delete Mail
+    // 7. Delete Mail
     deleteMail: async (uid: string) => {
         set({ isLoading: true })
         try {
@@ -236,7 +256,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 7. Send Mail
+    // 8. Send Mail
     sendMail: async (uid: string) => {
         set({ isLoading: true })
         try {
@@ -251,12 +271,12 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 8. Send Mail By ID
+    // 9. Send Mail By ID
     sendMailById: async (id: string, uid: string) => {
         return await get().sendMail(uid)
     },
 
-    // 9. Fetch Details
+    // 10. Fetch Details
     fetchMailDetails: async (uid: string) => {
         set({ isLoading: true })
         try {
@@ -272,7 +292,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 10. Download PDF
+    // 11. Download PDF
     downloadMailPdf: async (uid: string) => {
         set({ isLoading: true })
         try {
@@ -293,7 +313,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 11. Download Receipt
+    // 12. Download Receipt
     downloadReceiptPdf: async (uid: string) => {
         set({ isLoading: true })
         try {
@@ -314,7 +334,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // ✨ 12. Export Excel (NEW)
+    // ✨ 13. Export Excel (NEW)
     exportExcel: async (filters = {}) => {
         // Note: We deliberately do NOT set global isLoading to true to avoid full page spinner
         try {
@@ -349,7 +369,7 @@ export const useMailStore = create<MailState>((set, get) => ({
         }
     },
 
-    // 13. Dashboard Stats
+    // 14. Dashboard Stats
     getDashboardStats: async () => {
         set({ isLoading: true })
         try {
