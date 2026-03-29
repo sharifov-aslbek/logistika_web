@@ -602,18 +602,12 @@ const CreatePdf = () => {
     }
 
     const handleExternalSubmit = async (values: any, { resetForm }: any) => {
-        if (!isEmployeeRole) {
-            toast.push(
-                <Notification title="Xatolik" type="danger">
-                    Ushbu yuborish turi uchun tashkilot va filial kerak.
-                </Notification>,
-            )
-            return
-        }
-
         const formData = new FormData()
         formData.append('PinflOrInn', values.pinflOrInn)
-        formData.append('OrganizationId', values.organizationId?.toString() || '')
+        formData.append(
+            'OrganizationId',
+            values.organizationId?.toString() || '',
+        )
         formData.append('BranchId', values.branchId?.toString() || '')
         formData.append('PdfFile', values.file)
 
@@ -622,7 +616,7 @@ const CreatePdf = () => {
         if (success) {
             toast.push(
                 <Notification title="Muvaffaqiyatli" type="success">
-                    Tashqi hujjat muvaffaqiyatli yuborildi!
+                    Tashqi hujjat muvaffaqiyatli yaratildi!
                 </Notification>,
             )
             resetForm()
@@ -632,7 +626,7 @@ const CreatePdf = () => {
 
         toast.push(
             <Notification title="Xatolik" type="danger">
-                Tashqi hujjat yuborishda xatolik yuz berdi.
+                Tashqi hujjat yaratishda xatolik yuz berdi.
             </Notification>,
         )
     }
@@ -678,7 +672,7 @@ const CreatePdf = () => {
                         PDF fayldan hujjat yaratish
                     </h1>
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Kerakli yuborish turini tanlang va formani to'ldiring
+                        Kerakli yaratish turini tanlang va formani to'ldiring
                     </p>
                 </div>
 
@@ -694,7 +688,7 @@ const CreatePdf = () => {
                                 value="internal"
                                 className="px-1 py-3 text-sm font-semibold"
                             >
-                                Standart yuborish
+                                Standart yaratish
                             </Tabs.TabNav>
                             <Tabs.TabNav
                                 value="external"
@@ -1068,118 +1062,90 @@ const CreatePdf = () => {
                                                 />
 
                                                 <div className="flex flex-col gap-6 p-2">
-                                                    {isEmployeeRole ? (
-                                                        <>
-                                                            <OrganizationBranchFields
-                                                                role={role}
-                                                                orgOptions={
-                                                                    orgOptions
-                                                                }
-                                                                branchOptions={
-                                                                    branchOptions
-                                                                }
-                                                                values={
-                                                                    values
-                                                                }
-                                                                errors={
-                                                                    errors
-                                                                }
-                                                                touched={
-                                                                    touched
-                                                                }
-                                                                setFieldValue={
-                                                                    setFieldValue
-                                                                }
-                                                                setFieldTouched={
-                                                                    setFieldTouched
-                                                                }
-                                                                setFieldError={
-                                                                    setFieldError
-                                                                }
-                                                            />
+                                                    <OrganizationBranchFields
+                                                        role={role}
+                                                        orgOptions={orgOptions}
+                                                        branchOptions={
+                                                            branchOptions
+                                                        }
+                                                        values={values}
+                                                        errors={errors}
+                                                        touched={touched}
+                                                        setFieldValue={
+                                                            setFieldValue
+                                                        }
+                                                        setFieldTouched={
+                                                            setFieldTouched
+                                                        }
+                                                        setFieldError={
+                                                            setFieldError
+                                                        }
+                                                    />
 
-                                                            <FormItem
-                                                                label="PINFL yoki INN"
-                                                                invalid={!!(
-                                                                    errors.pinflOrInn &&
-                                                                    touched.pinflOrInn
-                                                                )}
-                                                                errorMessage={
-                                                                    errors.pinflOrInn as string
-                                                                }
-                                                            >
-                                                                <Field name="pinflOrInn">
-                                                                    {({
-                                                                        field,
-                                                                    }: FieldProps) => (
-                                                                        <Input
-                                                                            {...field}
-                                                                            type="text"
-                                                                            placeholder="PINFL yoki INN ni kiriting"
-                                                                            className={
-                                                                                inputClass
-                                                                            }
-                                                                        />
-                                                                    )}
-                                                                </Field>
-                                                            </FormItem>
+                                                    <FormItem
+                                                        label="PINFL yoki INN"
+                                                        invalid={!!(
+                                                            errors.pinflOrInn &&
+                                                            touched.pinflOrInn
+                                                        )}
+                                                        errorMessage={
+                                                            errors.pinflOrInn as string
+                                                        }
+                                                    >
+                                                        <Field name="pinflOrInn">
+                                                            {({
+                                                                field,
+                                                            }: FieldProps) => (
+                                                                <Input
+                                                                    {...field}
+                                                                    type="text"
+                                                                    placeholder="PINFL yoki INN ni kiriting"
+                                                                    className={
+                                                                        inputClass
+                                                                    }
+                                                                />
+                                                            )}
+                                                        </Field>
+                                                    </FormItem>
 
-                                                            <PinflOrInnLookupPreview
-                                                                baseUrl={
-                                                                    BASE_URL
-                                                                }
-                                                            />
+                                                    <PinflOrInnLookupPreview
+                                                        baseUrl={BASE_URL}
+                                                    />
 
-                                                            <PdfUploadField
-                                                                file={
-                                                                    values.file
-                                                                }
-                                                                fileList={
-                                                                    externalUploadedFiles
-                                                                }
-                                                                invalid={!!(
-                                                                    errors.file &&
-                                                                    touched.file
-                                                                )}
-                                                                errorMessage={
-                                                                    errors.file as string
-                                                                }
-                                                                onChange={(
-                                                                    files,
-                                                                ) =>
-                                                                    handlePdfFileChange(
-                                                                        files,
-                                                                        setExternalUploadedFiles,
-                                                                        {
-                                                                            setFieldValue,
-                                                                            setFieldTouched,
-                                                                            setFieldError,
-                                                                        },
-                                                                    )
-                                                                }
-                                                                onRemove={() =>
-                                                                    handlePdfFileRemove(
-                                                                        setExternalUploadedFiles,
-                                                                        {
-                                                                            setFieldValue,
-                                                                            setFieldTouched,
-                                                                            setFieldError,
-                                                                        },
-                                                                    )
-                                                                }
-                                                            />
-                                                        </>
-                                                    ) : (
-                                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-700">
-                                                            Ushbu yuborish turi
-                                                            uchun tashkilot va
-                                                            filial ma'lumotlari
-                                                            kerak. Hozirgi
-                                                            rolingizda bu
-                                                            ma'lumotlar mavjud
-                                                            emas.
-                                                        </div>
-                                                    )}
+                                                    <PdfUploadField
+                                                        file={values.file}
+                                                        fileList={
+                                                            externalUploadedFiles
+                                                        }
+                                                        invalid={!!(
+                                                            errors.file &&
+                                                            touched.file
+                                                        )}
+                                                        errorMessage={
+                                                            errors.file as string
+                                                        }
+                                                        onChange={(files) =>
+                                                            handlePdfFileChange(
+                                                                files,
+                                                                setExternalUploadedFiles,
+                                                                {
+                                                                    setFieldValue,
+                                                                    setFieldTouched,
+                                                                    setFieldError,
+                                                                },
+                                                            )
+                                                        }
+                                                        onRemove={() =>
+                                                            handlePdfFileRemove(
+                                                                setExternalUploadedFiles,
+                                                                {
+                                                                    setFieldValue,
+                                                                    setFieldTouched,
+                                                                    setFieldError,
+                                                                },
+                                                            )
+                                                        }
+                                                    />
 
                                                     <div className="mt-6 flex justify-end gap-4 border-t border-gray-100 pt-6 dark:border-gray-700">
                                                         <Button
@@ -1203,11 +1169,8 @@ const CreatePdf = () => {
                                                             loading={
                                                                 isLoading
                                                             }
-                                                            disabled={
-                                                                !isEmployeeRole
-                                                            }
                                                         >
-                                                            Tashqi yuborish
+                                                            Yaratish
                                                         </Button>
                                                     </div>
                                                 </div>
@@ -1216,7 +1179,7 @@ const CreatePdf = () => {
                                     )}
                                 </Formik>
                             </Tabs.TabContent>
-                        </div>
+                         </div>
                     </Tabs>
                 </Card>
             </div>
