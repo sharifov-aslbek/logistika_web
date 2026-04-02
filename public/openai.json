@@ -139,9 +139,18 @@
     "/api/mail/{uid}": {
       "get": {
         "tags": [ "Mail" ],
-        "summary": "Детали письма (включая статус подписей)",
+        "summary": "Детали письма (включая статус подписей и доставки)",
         "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
-        "responses": { "200": { "description": "Успешно" } }
+        "responses": { 
+          "200": { 
+            "description": "Успешно",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/MailDto" }
+              }
+            }
+          } 
+        }
       },
       "delete": {
         "tags": [ "Mail" ],
@@ -319,7 +328,7 @@
       "PerformDto": {
         "type": "object",
         "properties": {
-          "performType": { "type": "string", "description": "Название статуса (число или строка в зависимости от сериализатора)" },
+          "performType": { "type": "string", "description": "Название статуса" },
           "performedOn": { "type": "string", "format": "date-time" },
           "note": { "type": "string", "nullable": true },
           "courier": { "type": "string", "nullable": true },
