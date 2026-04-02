@@ -568,9 +568,9 @@ const CreateRegistry = () => {
                 return
             }
 
-            if (normalizedData.length > 200) {
+            if (normalizedData.length > 500) {
                 setInternalValidationErrors([
-                    'Excel file contains more than 200 records. Maximum allowed is 200.',
+                    'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
                 return
             }
@@ -618,9 +618,9 @@ const CreateRegistry = () => {
                 return
             }
 
-            if (normalizedData.length > 200) {
+            if (normalizedData.length > 500) {
                 setExternalValidationErrors([
-                    'Excel file contains more than 200 records. Maximum allowed is 200.',
+                    'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
                 return
             }

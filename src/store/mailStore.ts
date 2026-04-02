@@ -147,6 +147,9 @@ export const useMailStore = create<MailState>((set, get) => ({
             if (filters.endDate) queryParams.EndDate = filters.endDate
             if (typeof filters.isSend === 'boolean')
                 queryParams.IsSend = filters.isSend
+            if (String(filters.receiver || '').trim()) {
+                queryParams.Receiver = String(filters.receiver).trim()
+            }
 
             // ID Filters
             if (filters.regionId > 0) queryParams.RegionId = filters.regionId
@@ -345,6 +348,9 @@ export const useMailStore = create<MailState>((set, get) => ({
             if (filters.endDate) queryParams.EndDate = filters.endDate
             if (typeof filters.isSend === 'boolean')
                 queryParams.IsSend = filters.isSend
+            if (String(filters.receiver || '').trim()) {
+                queryParams.Receiver = String(filters.receiver).trim()
+            }
 
             if (filters.regionId > 0) queryParams.RegionId = filters.regionId
             if (filters.areaId > 0) queryParams.AreaId = filters.areaId

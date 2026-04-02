@@ -126,6 +126,7 @@ export const useAccountStore = create<AccountState>()(
                 pinfl: '',
                 id: 0,
                 role: '',
+                workingOrganizationId: 0,
             },
 
             // --- Helpers ---
@@ -262,6 +263,7 @@ export const useAccountStore = create<AccountState>()(
                                 pinfl: res.data.pinfl,
                                 id: res.data.id,
                                 role: res.data.role,
+                                workingOrganizationId: res.data.workingOrganizationId || 0,
                             },
                         })
                     }

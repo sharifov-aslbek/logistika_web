@@ -619,7 +619,7 @@ const CreatePdf = () => {
         formData.append('PinflOrInn', values.pinflOrInn)
         formData.append(
             'OrganizationId',
-            values.organizationId?.toString() || '',
+            values.organizationId?.toString() || userProfile?.workingOrganizationId?.toString() || '',
         )
         formData.append('BranchId', values.branchId?.toString() || '')
         formData.append('PdfFile', values.file)

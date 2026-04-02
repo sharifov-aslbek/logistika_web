@@ -1,0 +1,449 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "TezDoc API (Основной процесс)",
+    "description": "Операционный API для создания писем, подписания, работы с шаблонами и реестрами.",
+    "version": "1.0"
+  },
+  "tags": [
+    { "name": "Auth", "description": "Авторизация и Регистрация" },
+    { "name": "Mail", "description": "Основной документооборот (Письма)" },
+    { "name": "Branch", "description": "Филиалы и настройка подписантов" },
+    { "name": "Registry", "description": "Массовая рассылка (Реестры)" },
+    { "name": "Template", "description": "Шаблоны документов" },
+    { "name": "Helpers", "description": "Справочники (Регионы, Районы) и Интеграции" }
+  ],
+  "paths": {
+    "/api/auth/login/password": {
+      "post": {
+        "tags": [ "Auth" ],
+        "summary": "Вход по логину и паролю",
+        "description": "Отправьте номер телефона и пароль для получения Bearer токена.",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/LoginDto" } }
+          }
+        },
+        "responses": { "200": { "description": "Успешный вход" } }
+      }
+    },
+    "/api/auth/login/eimzo": {
+      "post": {
+        "tags": [ "Auth" ],
+        "summary": "Вход через E-IMZO",
+        "description": "Отправьте подпись PKCS#7 (E-IMZO) для входа по ПИНФЛ.",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/EimzoLoginDto" } }
+          }
+        },
+        "responses": { "200": { "description": "Успешный вход" } }
+      }
+    },
+    "/api/auth/register/user": {
+      "post": {
+        "tags": [ "Auth" ],
+        "summary": "Регистрация обычного пользователя",
+        "description": "Регистрация физического лица через E-IMZO с указанием телефона и пароля.",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/EimzoRegisterDto" } }
+          }
+        },
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/auth/register/director": {
+      "post": {
+        "tags": [ "Auth" ],
+        "summary": "Регистрация директора организации",
+        "description": "Регистрация директора Юр. лица через E-IMZO. Система автоматически создаст компанию и ее филиалы.",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/EimzoRegisterDto" } }
+          }
+        },
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/user/me": {
+      "get": {
+        "tags": [ "Auth" ],
+        "summary": "Получить профиль текущего пользователя",
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/mail": {
+      "post": {
+        "tags": [ "Mail" ],
+        "summary": "Создать новое письмо (Одиночное)",
+        "description": "Создает черновик письма с PDF файлом (Стандартный метод).",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ReceiverName": { "type": "string" },
+                  "ReceiverAddress": { "type": "string" },
+                  "RegionId": { "type": "integer", "format": "int64" },
+                  "AreaId": { "type": "integer", "format": "int64" },
+                  "BranchId": { "type": "integer", "format": "int64" },
+                  "OrganizationId": { "type": "integer", "format": "int64" },
+                  "PdfFile": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Создано" } }
+      }
+    },
+    "/api/mail/external": {
+      "post": {
+        "tags": [ "Mail" ],
+        "summary": "Создать письмо (По ПИНФЛ/ИНН - с ИИ)",
+        "description": "Создает письмо по ПИНФЛ или ИНН. Система сама найдет адрес и автоматически определит AreaId через ИИ.",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "PinflOrInn": { "type": "string", "description": "14 цифр ПИНФЛ или 9 цифр ИНН" },
+                  "BranchId": { "type": "integer", "format": "int64" },
+                  "OrganizationId": { "type": "integer", "format": "int64" },
+                  "PdfFile": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Создано" } }
+      }
+    },
+    "/api/mail/all": {
+      "get": {
+        "tags": [ "Mail" ],
+        "summary": "Получить список писем (Фильтрация)",
+        "parameters": [
+          { "name": "PageSize", "in": "query", "schema": { "type": "integer" } },
+          { "name": "PageIndex", "in": "query", "schema": { "type": "integer" } },
+          { "name": "IsSend", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "BranchId", "in": "query", "schema": { "type": "integer" } },
+          { "name": "OrganizationId", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/mail/{uid}": {
+      "get": {
+        "tags": [ "Mail" ],
+        "summary": "Детали письма (включая статус подписей)",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      },
+      "delete": {
+        "tags": [ "Mail" ],
+        "summary": "Удалить письмо",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/mail/update/{uid}": {
+      "patch": {
+        "tags": [ "Mail" ],
+        "summary": "Обновить данные письма",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateMailDto" } } }
+        },
+        "responses": { "200": { "description": "Обновлено" } }
+      }
+    },
+    "/api/mail/hash/{uid}": {
+      "get": {
+        "tags": [ "Mail" ],
+        "summary": "Получить Hash PDF файла (Шаг 1 для подписи)",
+        "description": "Возвращает SHA-256 хеш файла для подписи через E-IMZO.",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/mail/sign/{uid}": {
+      "post": {
+        "tags": [ "Mail" ],
+        "summary": "Подписать и Отправить (Шаг 2)",
+        "description": "Передайте PKCS#7 подпись хеша. Если все нужные подписи собраны, письмо отправляется.",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MailSignDto" } } }
+        },
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/mail/{uid}/download": {
+      "get": {
+        "tags": [ "Mail" ],
+        "summary": "Скачать PDF",
+        "parameters": [ { "name": "uid", "in": "path", "required": true, "schema": { "type": "string" } } ],
+        "responses": { "200": { "description": "Файл" } }
+      }
+    },
+    "/api/mail/export-excel": {
+      "get": {
+        "tags": [ "Mail" ],
+        "summary": "Экспорт писем в Excel",
+        "parameters": [
+          { "name": "IsSend", "in": "query", "schema": { "type": "boolean" } },
+          { "name": "BranchId", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": { "200": { "description": "Excel файл" } }
+      }
+    },
+    "/api/registry/process-mails": {
+      "post": {
+        "tags": [ "Registry" ],
+        "summary": "Массовая обработка писем (Стандартный Реестр)",
+        "description": "Принимает массив данных, рендерит шаблоны и генерирует письма.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegistryRequestModel" }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Письма успешно обработаны" } }
+      }
+    },
+    "/api/registry/process-mails/external": {
+      "post": {
+        "tags": [ "Registry" ],
+        "summary": "Массовая обработка писем (Внешний ИИ Реестр)",
+        "description": "Принимает реестр с ПИНФЛ/ИНН, сама находит адреса и регионы через ИИ, генерирует PDF.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RegistryExternalRequestModel" }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Письма успешно обработаны" } }
+      }
+    },
+    "/api/branch/my-organization-branches": {
+      "get": {
+        "tags": [ "Branch" ],
+        "summary": "Список филиалов организации",
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/branch/{branchId}/signers": {
+      "get": {
+        "tags": [ "Branch" ],
+        "summary": "Получить текущих подписантов филиала",
+        "parameters": [ { "name": "branchId", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/branch/set-signers": {
+      "post": {
+        "tags": [ "Branch" ],
+        "summary": "Назначить подписантов для филиала",
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SetBranchSignersDto" } } }
+        },
+        "responses": { "200": { "description": "Сохранено" } }
+      }
+    },
+    "/api/template": {
+      "get": {
+        "tags": [ "Template" ],
+        "summary": "Список шаблонов",
+        "responses": { "200": { "description": "Успешно" } }
+      },
+      "post": {
+        "tags": [ "Template" ],
+        "summary": "Загрузить новый шаблон",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [ "File", "Name" ],
+                "type": "object",
+                "properties": {
+                  "Name": { "type": "string" },
+                  "File": { "type": "string", "format": "binary" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/template/{id}": {
+      "delete": {
+        "tags": [ "Template" ],
+        "summary": "Удалить шаблон",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/region": {
+      "get": {
+        "tags": [ "Helpers" ],
+        "summary": "Получить список регионов (Областей)",
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    },
+    "/api/region/{id}/areas": {
+      "get": {
+        "tags": [ "Helpers" ],
+        "summary": "Получить список районов по ID региона",
+        "parameters": [ { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } } ],
+        "responses": { "200": { "description": "Успешно" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PerformType": {
+        "type": "integer",
+        "format": "int32",
+        "enum": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "description": "Статусы доставки (PerformType):\n* `0` - Доставлен\n* `1` - Адресат умер (Олувчи вафот этган)\n* `2` - Адресат по указанному адресу не проживает (Олувчи кўрсатилган манзилда яшамайди)\n* `3` - Указан не полный адрес (Тўлиқ манзил кўрсатилмаган)\n* `4` - Адресат от получения отказался (Олувчи қабул қилишдан бош тортди)\n* `5` - Нет дома (Уйда йўқ)\n* `6` - Не явился по извещению (Хабарнома қолдирилди олувчи келмади)\n* `7` - Адрес не определен (Манзил аниқланмади)\n* `8` - Попытка вручения\n* `9` - По указанному адресу организация не найдена (Кўрсатилган манзилдан ташкилот топилмади)"
+      },
+      "PerformDto": {
+        "type": "object",
+        "properties": {
+          "performType": { "type": "string", "description": "Название статуса (число или строка в зависимости от сериализатора)" },
+          "performedOn": { "type": "string", "format": "date-time" },
+          "note": { "type": "string", "nullable": true },
+          "courier": { "type": "string", "nullable": true },
+          "postIndex": { "type": "string", "nullable": true },
+          "receipt": { "type": "string", "nullable": true }
+        }
+      },
+      "MailDto": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": "string" },
+          "receiverName": { "type": "string" },
+          "receiverAddress": { "type": "string" },
+          "isSend": { "type": "boolean" },
+          "regionId": { "type": "integer", "format": "int64" },
+          "areaId": { "type": "integer", "format": "int64" },
+          "sendStatus": { "type": "string" },
+          "sentOn": { "type": "string", "format": "date-time", "nullable": true },
+          "pdfFilePath": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "isPendingSignature": { "type": "boolean" },
+          "activePerform": { "$ref": "#/components/schemas/PerformDto" },
+          "performs": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PerformDto" }
+          }
+        }
+      },
+      "LoginDto": {
+        "required": [ "password", "phone" ],
+        "type": "object",
+        "properties": {
+          "phone": { "type": "string", "example": "998901234567" },
+          "password": { "type": "string" }
+        }
+      },
+      "EimzoLoginDto": {
+        "type": "object",
+        "properties": { "signature": { "type": "string" } }
+      },
+      "EimzoRegisterDto": {
+        "type": "object",
+        "properties": {
+          "signature": { "type": "string", "description": "PKCS#7 Подпись" },
+          "phone": { "type": "string", "example": "998901234567" },
+          "password": { "type": "string" }
+        }
+      },
+      "UpdateMailDto": {
+        "type": "object",
+        "properties": {
+          "receiverName": { "type": "string" },
+          "receiverAddress": { "type": "string" },
+          "regionId": { "type": "integer", "format": "int64" },
+          "areaId": { "type": "integer", "format": "int64" }
+        }
+      },
+      "MailSignDto": {
+        "type": "object",
+        "properties": { "signature": { "type": "string" } }
+      },
+      "SetBranchSignersDto": {
+        "type": "object",
+        "properties": {
+          "branchId": { "type": "integer", "format": "int64" },
+          "userIds": {
+            "type": "array",
+            "items": { "type": "integer", "format": "int64" }
+          }
+        }
+      },
+      "RegistryRequestModel": {
+        "required": [ "mails" ],
+        "type": "object",
+        "properties": {
+          "organizationId": { "type": "integer", "format": "int64", "description": "ID Организации (для всей пачки)" },
+          "branchId": { "type": "integer", "format": "int64", "description": "ID Филиала (для всей пачки)" },
+          "mails": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/MailRegistryItemModel" }
+          }
+        }
+      },
+      "MailRegistryItemModel": {
+        "required": [ "address", "areaId", "content", "receiver", "regionId", "templateName" ],
+        "type": "object",
+        "properties": {
+          "receiver": { "type": "string" },
+          "regionId": { "type": "integer", "format": "int64" },
+          "areaId": { "type": "integer", "format": "int64" },
+          "address": { "type": "string" },
+          "content": { "type": "string", "description": "JSON данные для подстановки" },
+          "templateName": { "type": "string" }
+        }
+      },
+      "RegistryExternalRequestModel": {
+        "type": "object",
+        "properties": {
+          "organizationId": { "type": "integer", "format": "int64" },
+          "branchId": { "type": "integer", "format": "int64" },
+          "mails": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ExternalMailRegistryItemModel" }
+          }
+        }
+      },
+      "ExternalMailRegistryItemModel": {
+        "type": "object",
+        "properties": {
+          "pinflOrInn": { "type": "string" },
+          "templateName": { "type": "string" },
+          "content": { "type": "string" }
+        }
+      }
+    },
+    "securitySchemes": {
+      "Bearer": {
+        "type": "http",
+        "scheme": "Bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    { "Bearer": [] }
+  ]
+}
