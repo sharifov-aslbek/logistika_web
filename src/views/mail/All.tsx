@@ -5,6 +5,7 @@ import {
     HiOutlinePlus,
     HiOutlineDocumentText,
     HiOutlineDownload,
+    HiOutlineRefresh,
 } from 'react-icons/hi'
 import * as XLSX from 'xlsx'
 
@@ -25,6 +26,12 @@ import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
 import { useMailStore } from '@/store/mailStore'
 import { useAccountStore } from '@/store/accountStore'
+import { useOrganizationStore } from '@/store/organizationStore'
+import {
+    ROLE_WORKER,
+    ROLE_BRANCH_DIRECTOR,
+    ROLE_ADMIN,
+} from '@/constants/usertype.constant'
 
 const { Tr, Th, Td, THead, TBody } = Table
 
@@ -110,7 +117,23 @@ const MailList = () => {
     // Store
     const { mails, totalMails, isLoading, getAllMails, exportExcel } =
         useMailStore()
+    const userProfile = useAccountStore((state) => state.userProfile)
     const token = useAccountStore((state) => state.userProfile?.token)
+    const {
+        myOrganizations,
+        myBranches,
+        organizationBranches,
+        fetchMyOrganizations,
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+    } = useOrganizationStore()
+    const role = Number(userProfile?.role || 0)
+    const isBranchFilterRole = [
+        ROLE_WORKER,
+        ROLE_BRANCH_DIRECTOR,
+        ROLE_ADMIN,
+    ].includes(role)
+    const isAdminRole = role === ROLE_ADMIN
 
     // --- State ---
     const [pageIndex, setPageIndex] = useState(1)
@@ -123,7 +146,11 @@ const MailList = () => {
     const [filterEndDate, setFilterEndDate] = useState<Date | null>(null)
     const [filterRegion, setFilterRegion] = useState<Option | null>(null)
     const [filterArea, setFilterArea] = useState<Option | null>(null)
+    const [filterOrganization, setFilterOrganization] =
+        useState<Option | null>(null)
+    const [filterBranch, setFilterBranch] = useState<Option | null>(null)
     const [filterSender, setFilterSender] = useState('')
+    const [debouncedFilterSender, setDebouncedFilterSender] = useState('')
     const [searchQuery, setSearchQuery] = useState('')
 
     // Options
@@ -165,6 +192,65 @@ const MailList = () => {
         return date ? dayjs(date).format('YYYY-MM-DD') : undefined
     }
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedFilterSender(filterSender.trim())
+        }, 1500)
+
+        return () => window.clearTimeout(timer)
+    }, [filterSender])
+
+    useEffect(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            fetchMyBranches()
+        } else if (role === ROLE_ADMIN) {
+            fetchMyOrganizations()
+            fetchMyOrganizationBranches()
+        }
+    }, [
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+        fetchMyOrganizations,
+        role,
+    ])
+
+    const organizationOptions = useMemo(
+        () =>
+            myOrganizations.map((organization: any) => ({
+                value: Number(organization.id),
+                label:
+                    organization.fullName ||
+                    organization.name ||
+                    organization.shortName,
+            })),
+        [myOrganizations],
+    )
+
+    const branchOptions = useMemo(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            return myBranches.map((branch: any) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
+        }
+
+        if (role === ROLE_ADMIN) {
+            return organizationBranches
+                .filter(
+                    (branch: any) =>
+                        !filterOrganization?.value ||
+                        Number(branch.organizationId) ===
+                            Number(filterOrganization.value),
+                )
+                .map((branch: any) => ({
+                    value: Number(branch.id),
+                    label: branch.name,
+                }))
+        }
+
+        return [] as Option[]
+    }, [role, myBranches, organizationBranches, filterOrganization])
+
     // --- EXCEL EXPORT ---
     const handleExportExcel = async () => {
         setIsExporting(true)
@@ -179,6 +265,9 @@ const MailList = () => {
                 isSend,
                 regionId: filterRegion?.value,
                 areaId: filterArea?.value,
+                organizationId: filterOrganization?.value,
+                branchId: filterBranch?.value,
+                receiver: debouncedFilterSender,
             })
 
             if (blob) {
@@ -278,6 +367,9 @@ const MailList = () => {
             isSend,
             regionId: filterRegion?.value,
             areaId: filterArea?.value,
+            organizationId: filterOrganization?.value,
+            branchId: filterBranch?.value,
+            receiver: debouncedFilterSender,
         })
     }
 
@@ -291,6 +383,9 @@ const MailList = () => {
         filterEndDate,
         filterRegion,
         filterArea,
+        filterOrganization,
+        filterBranch,
+        debouncedFilterSender,
     ])
 
     const onPaginationChange = (page: number) => setPageIndex(page)
@@ -303,19 +398,14 @@ const MailList = () => {
     const filteredMails = useMemo(() => {
         if (!mails) return []
         return mails.filter((item: any) => {
-            const matchesSender =
-                !filterSender ||
-                item.receiverName
-                    .toLowerCase()
-                    .includes(filterSender.toLowerCase())
             const matchesSearch =
                 !searchQuery ||
                 (item.uid?.toLowerCase() || '').includes(
                     searchQuery.toLowerCase().trim(),
                 )
-            return matchesSender && matchesSearch
+            return matchesSearch
         })
-    }, [mails, filterSender, searchQuery])
+    }, [mails, searchQuery])
 
     // --- PDF VIEWER ---
     const openPdfViewer = async (row: any) => {
@@ -344,129 +434,186 @@ const MailList = () => {
     return (
         <div className="p-4">
             <Card className="mb-6 border border-gray-200 shadow-sm rounded-xl">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-                    {/* Filters */}
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Holat
-                        </label>
-                        <Select
-                            placeholder="Holat"
-                            options={[
-                                { label: 'Barchasi', value: 'all' },
-                                { label: 'Yuborilgan', value: 'sent' },
-                                { label: 'Qoralama', value: 'draft' },
-                            ]}
-                            value={filterStatus}
-                            onChange={setFilterStatus}
-                            size="sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Sana (dan)
-                        </label>
-                        <DatePicker
-                            placeholder="Sanadan"
-                            value={filterStartDate}
-                            onChange={setFilterStartDate}
-                            size="sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Sana (gacha)
-                        </label>
-                        <DatePicker
-                            placeholder="Sanagacha"
-                            value={filterEndDate}
-                            onChange={setFilterEndDate}
-                            size="sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Viloyat
-                        </label>
-                        <Select
-                            placeholder="Viloyat"
-                            options={regionOptions}
-                            isLoading={loadingRegions}
-                            value={filterRegion}
-                            onChange={handleRegionChange}
-                            size="sm"
-                        />
-                    </div>
-                    <div>
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Tuman
-                        </label>
-                        <Select
-                            placeholder="Tuman"
-                            options={areaOptions}
-                            isLoading={loadingAreas}
-                            isDisabled={!filterRegion}
-                            value={filterArea}
-                            onChange={setFilterArea}
-                            size="sm"
-                        />
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:col-span-9 xl:grid-cols-3 2xl:grid-cols-4">
+                            <div className="min-w-0">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Holat
+                                </label>
+                                <Select
+                                    placeholder="Holat"
+                                    options={[
+                                        { label: 'Barchasi', value: 'all' },
+                                        { label: 'Yuborilgan', value: 'sent' },
+                                        { label: 'Qoralama', value: 'draft' },
+                                    ]}
+                                    value={filterStatus}
+                                    onChange={setFilterStatus}
+                                    size="sm"
+                                />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Sana (dan)
+                                </label>
+                                <DatePicker
+                                    placeholder="Sanadan"
+                                    value={filterStartDate}
+                                    onChange={setFilterStartDate}
+                                    inputFormat="YYYY-MM-DD"
+                                    size="sm"
+                                />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Sana (gacha)
+                                </label>
+                                <DatePicker
+                                    placeholder="Sanagacha"
+                                    value={filterEndDate}
+                                    onChange={setFilterEndDate}
+                                    inputFormat="YYYY-MM-DD"
+                                    size="sm"
+                                />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Viloyat
+                                </label>
+                                <Select
+                                    placeholder="Viloyat"
+                                    options={regionOptions}
+                                    isLoading={loadingRegions}
+                                    value={filterRegion}
+                                    onChange={handleRegionChange}
+                                    size="sm"
+                                />
+                            </div>
+                            <div className="min-w-0">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Tuman
+                                </label>
+                                <Select
+                                    placeholder="Tuman"
+                                    options={areaOptions}
+                                    isLoading={loadingAreas}
+                                    isDisabled={!filterRegion}
+                                    value={filterArea}
+                                    onChange={setFilterArea}
+                                    size="sm"
+                                />
+                            </div>
+
+                            {isAdminRole && (
+                                <div className="min-w-0">
+                                    <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                        Tashkilot
+                                    </label>
+                                    <Select
+                                        placeholder="Tashkilot"
+                                        options={organizationOptions}
+                                        value={filterOrganization}
+                                        onChange={(option) => {
+                                            setFilterOrganization(option)
+                                            setFilterBranch(null)
+                                        }}
+                                        size="sm"
+                                    />
+                                </div>
+                            )}
+
+                            {isBranchFilterRole && (
+                                <div className="min-w-0">
+                                    <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                        Filial
+                                    </label>
+                                    <Select
+                                        placeholder="Filial"
+                                        options={branchOptions}
+                                        value={filterBranch}
+                                        onChange={setFilterBranch}
+                                        size="sm"
+                                    />
+                                </div>
+                            )}
+
+                            <div className="min-w-0 xl:col-span-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Qabul qiluvchi
+                                </label>
+                                <Input
+                                    placeholder="Ism bo'yicha"
+                                    prefix={<HiOutlineFilter />}
+                                    value={filterSender}
+                                    onChange={(e) =>
+                                        setFilterSender(e.target.value)
+                                    }
+                                    size="sm"
+                                />
+                            </div>
+                            <div className="min-w-0 xl:col-span-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    ID Qidirish
+                                </label>
+                                <Input
+                                    placeholder="ID bo'yicha..."
+                                    prefix={<HiOutlineSearch />}
+                                    value={searchQuery}
+                                    onChange={(e) =>
+                                        setSearchQuery(e.target.value)
+                                    }
+                                    size="sm"
+                                />
+                            </div>
                     </div>
 
-                    {/* Excel Button */}
-                    <div className="flex items-end gap-2 justify-end lg:col-span-1">
-                        <Button
-                            variant="twoTone"
-                            color="emerald-600"
-                            size="sm"
-                            icon={<HiOutlineDownload />}
-                            loading={isExporting}
-                            onClick={handleExportExcel}
-                        >
-                            Excel
-                        </Button>
-                    </div>
+                    <div className="xl:col-span-3">
+                        <div className="flex h-full flex-col justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/80 p-4">
+                            <Button
+                                variant="twoTone"
+                                color="sky-600"
+                                size="sm"
+                                icon={<HiOutlineRefresh />}
+                                loading={isLoading}
+                                onClick={fetchData}
+                                block
+                            >
+                                Yangilash
+                            </Button>
 
-                    <div className="lg:col-span-2">
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            Qabul qiluvchi
-                        </label>
-                        <Input
-                            placeholder="Ism bo'yicha"
-                            prefix={<HiOutlineFilter />}
-                            value={filterSender}
-                            onChange={(e) => setFilterSender(e.target.value)}
-                            size="sm"
-                        />
-                    </div>
-                    <div className="lg:col-span-2">
-                        <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
-                            ID Qidirish
-                        </label>
-                        <Input
-                            placeholder="ID bo'yicha..."
-                            prefix={<HiOutlineSearch />}
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            size="sm"
-                        />
-                    </div>
-                    <div className="lg:col-span-2 flex items-end gap-2 justify-end">
-                        <Button
-                            variant="solid"
-                            size="sm"
-                            icon={<HiOutlinePlus />}
-                            onClick={() => navigate('/mail/create-pdf')}
-                        >
-                            Yangi hujjat
-                        </Button>
-                        <Button
-                            variant="solid"
-                            size="sm"
-                            icon={<HiOutlinePlus />}
-                            onClick={() => navigate('/mail/create-registry')}
-                        >
-                            Yangi reestr
-                        </Button>
+                            <Button
+                                variant="twoTone"
+                                color="emerald-600"
+                                size="sm"
+                                icon={<HiOutlineDownload />}
+                                loading={isExporting}
+                                onClick={handleExportExcel}
+                                block
+                            >
+                                Excel
+                            </Button>
+
+                            <div className="grid grid-cols-1 gap-2">
+                                <Button
+                                    variant="solid"
+                                    size="sm"
+                                    icon={<HiOutlinePlus />}
+                                    onClick={() => navigate('/mail/create-pdf')}
+                                    block
+                                >
+                                    Yangi hujjat
+                                </Button>
+                                <Button
+                                    variant="solid"
+                                    size="sm"
+                                    icon={<HiOutlinePlus />}
+                                    onClick={() => navigate('/mail/create-registry')}
+                                    block
+                                >
+                                    Yangi reestr
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </Card>
@@ -562,11 +709,17 @@ const MailList = () => {
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ].find((i) => i.value === pageSize)}
                             options={[
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ]}
                             onChange={(option) =>
                                 onSelectChange(option?.value || 10)

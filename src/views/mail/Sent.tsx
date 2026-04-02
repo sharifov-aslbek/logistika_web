@@ -6,6 +6,7 @@ import {
     HiOutlineDocumentText,
     HiOutlineIdentification,
     HiOutlineDownload,
+    HiOutlineRefresh,
 } from 'react-icons/hi'
 // ❌ REMOVED: import * as XLSX from 'xlsx'
 
@@ -28,8 +29,15 @@ import dayjs from 'dayjs'
 import { useNavigate } from 'react-router-dom'
 import { useMailStore } from '@/store/mailStore'
 import { useAccountStore } from '@/store/accountStore'
+import { useOrganizationStore } from '@/store/organizationStore'
+import {
+    ROLE_WORKER,
+    ROLE_BRANCH_DIRECTOR,
+    ROLE_ADMIN,
+} from '@/constants/usertype.constant'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
+type Option = { value: string | number; label: string }
 
 // --- Helper Component: Status Tag ---
 const StatusTag = ({ row }: { row: any }) => {
@@ -104,7 +112,23 @@ const SentMails = () => {
     // ✨ ADDED: exportExcel
     const { mails, totalMails, isLoading, getAllMails, exportExcel } =
         useMailStore()
+    const userProfile = useAccountStore((state) => state.userProfile)
     const token = useAccountStore((state) => state.userProfile?.token)
+    const {
+        myOrganizations,
+        myBranches,
+        organizationBranches,
+        fetchMyOrganizations,
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+    } = useOrganizationStore()
+    const role = Number(userProfile?.role || 0)
+    const isBranchFilterRole = [
+        ROLE_WORKER,
+        ROLE_BRANCH_DIRECTOR,
+        ROLE_ADMIN,
+    ].includes(role)
+    const isAdminRole = role === ROLE_ADMIN
 
     // --- State ---
     const [pageIndex, setPageIndex] = useState(1)
@@ -114,6 +138,16 @@ const SentMails = () => {
 
     const [startDate, setStartDate] = useState<Date | null>(null)
     const [endDate, setEndDate] = useState<Date | null>(null)
+    const [filterRegion, setFilterRegion] = useState<Option | null>(null)
+    const [filterArea, setFilterArea] = useState<Option | null>(null)
+    const [filterOrganization, setFilterOrganization] =
+        useState<Option | null>(null)
+    const [filterBranch, setFilterBranch] = useState<Option | null>(null)
+    const [regionOptions, setRegionOptions] = useState<Option[]>([])
+    const [areaOptions, setAreaOptions] = useState<Option[]>([])
+    const [loadingRegions, setLoadingRegions] = useState(false)
+    const [loadingAreas, setLoadingAreas] = useState(false)
+    const [debouncedFilterName, setDebouncedFilterName] = useState('')
 
     // ✨ ADDED: Export loading state
     const [isExporting, setIsExporting] = useState(false)
@@ -153,6 +187,118 @@ const SentMails = () => {
         return date ? dayjs(date).format('YYYY-MM-DD') : undefined
     }
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedFilterName(filterName.trim())
+        }, 1500)
+
+        return () => window.clearTimeout(timer)
+    }, [filterName])
+
+    useEffect(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            fetchMyBranches()
+        } else if (role === ROLE_ADMIN) {
+            fetchMyOrganizations()
+            fetchMyOrganizationBranches()
+        }
+    }, [
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+        fetchMyOrganizations,
+        role,
+    ])
+
+    const organizationOptions = useMemo(
+        () =>
+            myOrganizations.map((organization: any) => ({
+                value: Number(organization.id),
+                label:
+                    organization.fullName ||
+                    organization.name ||
+                    organization.shortName,
+            })),
+        [myOrganizations],
+    )
+
+    const branchOptions = useMemo(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            return myBranches.map((branch: any) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
+        }
+
+        if (role === ROLE_ADMIN) {
+            return organizationBranches
+                .filter(
+                    (branch: any) =>
+                        !filterOrganization?.value ||
+                        Number(branch.organizationId) ===
+                            Number(filterOrganization.value),
+                )
+                .map((branch: any) => ({
+                    value: Number(branch.id),
+                    label: branch.name,
+                }))
+        }
+
+        return [] as Option[]
+    }, [role, myBranches, organizationBranches, filterOrganization])
+
+    useEffect(() => {
+        const fetchRegions = async () => {
+            setLoadingRegions(true)
+            try {
+                const response = await axios.get(`${BASE_URL}/region`, {
+                    headers: getHeaders(),
+                })
+                if (response.data?.code === 200) {
+                    setRegionOptions(
+                        response.data.data.map((region: any) => ({
+                            value: region.id,
+                            label: region.name,
+                        })),
+                    )
+                }
+            } catch (error) {
+                console.error(error)
+            } finally {
+                setLoadingRegions(false)
+            }
+        }
+
+        fetchRegions()
+    }, [])
+
+    const handleRegionChange = async (option: Option | null) => {
+        setFilterRegion(option)
+        setFilterArea(null)
+        setAreaOptions([])
+
+        if (option?.value) {
+            setLoadingAreas(true)
+            try {
+                const response = await axios.get(
+                    `${BASE_URL}/region/${option.value}/areas`,
+                    { headers: getHeaders() },
+                )
+                if (response.data?.code === 200) {
+                    setAreaOptions(
+                        response.data.data.areas.map((area: any) => ({
+                            value: area.id,
+                            label: area.name,
+                        })),
+                    )
+                }
+            } catch (error) {
+                console.error(error)
+            } finally {
+                setLoadingAreas(false)
+            }
+        }
+    }
+
     // --- ✨ API Excel Export (Sent Mails) ---
     const handleExportExcel = async () => {
         setIsExporting(true)
@@ -165,6 +311,11 @@ const SentMails = () => {
                 startDate: start,
                 endDate: end,
                 isSend: true, // 🔒 FORCED: Always true for Sent Mails page
+                regionId: filterRegion?.value,
+                areaId: filterArea?.value,
+                organizationId: filterOrganization?.value,
+                branchId: filterBranch?.value,
+                receiver: debouncedFilterName,
             })
 
             if (blob) {
@@ -212,12 +363,27 @@ const SentMails = () => {
             startDate: formatDate(startDate),
             endDate: formatDate(endDate),
             isSend: true, // Always true for this page
+            regionId: filterRegion?.value,
+            areaId: filterArea?.value,
+            organizationId: filterOrganization?.value,
+            branchId: filterBranch?.value,
+            receiver: debouncedFilterName,
         })
     }
 
     useEffect(() => {
         fetchData()
-    }, [startDate, endDate, pageIndex, pageSize])
+    }, [
+        startDate,
+        endDate,
+        pageIndex,
+        pageSize,
+        filterRegion,
+        filterArea,
+        filterOrganization,
+        filterBranch,
+        debouncedFilterName,
+    ])
 
     const onPaginationChange = (page: number) => setPageIndex(page)
 
@@ -236,15 +402,9 @@ const SentMails = () => {
                     return false
                 }
             }
-            if (filterName) {
-                const name = item.receiverName?.toLowerCase() || ''
-                if (!name.includes(filterName.toLowerCase().trim())) {
-                    return false
-                }
-            }
             return true
         })
-    }, [mails, filterId, filterName])
+    }, [mails, filterId])
 
     // --- Actions ---
     const openPdfViewer = async (row: any) => {
@@ -287,6 +447,7 @@ const SentMails = () => {
                                 placeholder="Boshlanish"
                                 value={startDate}
                                 onChange={setStartDate}
+                                inputFormat="YYYY-MM-DD"
                                 size="sm"
                             />
                         </div>
@@ -299,6 +460,7 @@ const SentMails = () => {
                                 placeholder="Tugash"
                                 value={endDate}
                                 onChange={setEndDate}
+                                inputFormat="YYYY-MM-DD"
                                 size="sm"
                             />
                         </div>
@@ -332,11 +494,83 @@ const SentMails = () => {
                                 size="sm"
                             />
                         </div>
+
+                        <div className="w-full sm:w-40">
+                            <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                Viloyat
+                            </label>
+                            <Select
+                                placeholder="Viloyat"
+                                options={regionOptions}
+                                isLoading={loadingRegions}
+                                value={filterRegion}
+                                onChange={handleRegionChange}
+                                size="sm"
+                            />
+                        </div>
+
+                        <div className="w-full sm:w-40">
+                            <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                Tuman
+                            </label>
+                            <Select
+                                placeholder="Tuman"
+                                options={areaOptions}
+                                isLoading={loadingAreas}
+                                isDisabled={!filterRegion}
+                                value={filterArea}
+                                onChange={setFilterArea}
+                                size="sm"
+                            />
+                        </div>
+
+                        {isAdminRole && (
+                            <div className="w-full sm:w-48">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Tashkilot
+                                </label>
+                                <Select
+                                    placeholder="Tashkilot"
+                                    options={organizationOptions}
+                                    value={filterOrganization}
+                                    onChange={(option) => {
+                                        setFilterOrganization(option)
+                                        setFilterBranch(null)
+                                    }}
+                                    size="sm"
+                                />
+                            </div>
+                        )}
+
+                        {isBranchFilterRole && (
+                            <div className="w-full sm:w-48">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">
+                                    Filial
+                                </label>
+                                <Select
+                                    placeholder="Filial"
+                                    options={branchOptions}
+                                    value={filterBranch}
+                                    onChange={setFilterBranch}
+                                    size="sm"
+                                />
+                            </div>
+                        )}
                     </div>
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
                         {/* ✨ UPDATED EXCEL BUTTON */}
+                        <Button
+                            variant="twoTone"
+                            color="sky-600"
+                            size="sm"
+                            icon={<HiOutlineRefresh />}
+                            loading={isLoading}
+                            onClick={fetchData}
+                        >
+                            Yangilash
+                        </Button>
                         <Button
                             variant="twoTone"
                             color="emerald-600"
@@ -459,11 +693,17 @@ const SentMails = () => {
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ].find((item) => item.value === pageSize)}
                             options={[
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ]}
                             onChange={(option) =>
                                 onSelectChange(option?.value || 10)

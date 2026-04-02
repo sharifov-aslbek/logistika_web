@@ -7,6 +7,7 @@ import {
     HiOutlinePencil,
     HiOutlineTrash,
     HiOutlineDownload,
+    HiOutlineRefresh,
     HiCheckCircle,
     HiXCircle,
 } from 'react-icons/hi'
@@ -33,10 +34,17 @@ import { useNavigate } from 'react-router-dom'
 import { useMailStore } from '@/store/mailStore'
 import { useAccountStore } from '@/store/accountStore'
 import { useEImzoStore } from '@/store/eImzoStore'
+import { useOrganizationStore } from '@/store/organizationStore'
+import {
+    ROLE_WORKER,
+    ROLE_BRANCH_DIRECTOR,
+    ROLE_ADMIN,
+} from '@/constants/usertype.constant'
 
 import MissingSign from '../../components/shared/missingsign'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
+type Option = { value: string | number; label: string }
 
 const StatusTag = ({ row }: { row: any }) => {
     return (
@@ -50,7 +58,19 @@ const MailList = () => {
     const navigate = useNavigate()
 
     const { mails, totalMails, isLoading, getAllMails, exportExcel, deleteMail } = useMailStore()
+    const userProfile = useAccountStore((state: any) => state.userProfile)
     const { init, loadKey, createPkcs7, error, loading: storeLoading } = useEImzoStore()
+    const {
+        myOrganizations,
+        myBranches,
+        organizationBranches,
+        fetchMyOrganizations,
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+    } = useOrganizationStore()
+    const role = Number(userProfile?.role || 0)
+    const isBranchFilterRole = [ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN].includes(role)
+    const isAdminRole = role === ROLE_ADMIN
 
     const token = useAccountStore((state: any) => state.user?.token) ||
         (() => {
@@ -67,6 +87,15 @@ const MailList = () => {
     const [pageIndex, setPageIndex] = useState(1)
     const [pageSize, setPageSize] = useState(10)
     const [isExporting, setIsExporting] = useState(false)
+    const [filterRegion, setFilterRegion] = useState<Option | null>(null)
+    const [filterArea, setFilterArea] = useState<Option | null>(null)
+    const [filterOrganization, setFilterOrganization] = useState<Option | null>(null)
+    const [filterBranch, setFilterBranch] = useState<Option | null>(null)
+    const [regionOptions, setRegionOptions] = useState<Option[]>([])
+    const [areaOptions, setAreaOptions] = useState<Option[]>([])
+    const [loadingRegions, setLoadingRegions] = useState(false)
+    const [loadingAreas, setLoadingAreas] = useState(false)
+    const [debouncedFilterSender, setDebouncedFilterSender] = useState('')
     const [selectedIds, setSelectedIds] = useState<string[]>([])
     const [sendModalOpen, setSendModalOpen] = useState(false)
     const [mailToSend, setMailToSend] = useState<any>(null)
@@ -119,6 +148,46 @@ const MailList = () => {
         console.log('[MailList] storeLoading changed:', storeLoading)
     }, [error, storeLoading])
 
+    useEffect(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            fetchMyBranches()
+        } else if (role === ROLE_ADMIN) {
+            fetchMyOrganizations()
+            fetchMyOrganizationBranches()
+        }
+    }, [
+        fetchMyBranches,
+        fetchMyOrganizationBranches,
+        fetchMyOrganizations,
+        role,
+    ])
+
+    useEffect(() => {
+        const fetchRegions = async () => {
+            setLoadingRegions(true)
+            try {
+                const response = await axios.get(`${BASE_URL}/region`, {
+                    headers: getHeaders(),
+                })
+
+                if (response.data?.code === 200) {
+                    setRegionOptions(
+                        response.data.data.map((region: any) => ({
+                            value: region.id,
+                            label: region.name,
+                        })),
+                    )
+                }
+            } catch (error) {
+                console.error('[fetchRegions] error:', error)
+            } finally {
+                setLoadingRegions(false)
+            }
+        }
+
+        fetchRegions()
+    }, [])
+
     const getHeaders = () => {
         const headers = {
             Authorization: `Bearer ${token}`,
@@ -137,6 +206,80 @@ const MailList = () => {
         return formatted
     }
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            setDebouncedFilterSender(filterSender.trim())
+        }, 1500)
+
+        return () => window.clearTimeout(timer)
+    }, [filterSender])
+
+    const organizationOptions = useMemo(
+        () =>
+            myOrganizations.map((organization: any) => ({
+                value: Number(organization.id),
+                label:
+                    organization.fullName ||
+                    organization.name ||
+                    organization.shortName,
+            })),
+        [myOrganizations],
+    )
+
+    const branchOptions = useMemo(() => {
+        if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
+            return myBranches.map((branch: any) => ({
+                value: Number(branch.id),
+                label: branch.name,
+            }))
+        }
+
+        if (role === ROLE_ADMIN) {
+            return organizationBranches
+                .filter(
+                    (branch: any) =>
+                        !filterOrganization?.value ||
+                        Number(branch.organizationId) ===
+                            Number(filterOrganization.value),
+                )
+                .map((branch: any) => ({
+                    value: Number(branch.id),
+                    label: branch.name,
+                }))
+        }
+
+        return [] as Option[]
+    }, [role, myBranches, organizationBranches, filterOrganization])
+
+    const handleRegionChange = async (option: Option | null) => {
+        setFilterRegion(option)
+        setFilterArea(null)
+        setAreaOptions([])
+
+        if (option?.value) {
+            setLoadingAreas(true)
+            try {
+                const response = await axios.get(
+                    `${BASE_URL}/region/${option.value}/areas`,
+                    { headers: getHeaders() },
+                )
+
+                if (response.data?.code === 200) {
+                    setAreaOptions(
+                        response.data.data.areas.map((area: any) => ({
+                            value: area.id,
+                            label: area.name,
+                        })),
+                    )
+                }
+            } catch (error) {
+                console.error('[handleRegionChange] error:', error)
+            } finally {
+                setLoadingAreas(false)
+            }
+        }
+    }
+
     const fetchData = async () => {
         const dateStr = formatDate(filterDate)
 
@@ -145,6 +288,11 @@ const MailList = () => {
             pageSize,
             filterDate,
             dateStr,
+            filterRegion,
+            filterArea,
+            filterOrganization,
+            filterBranch,
+            debouncedFilterSender,
         })
 
         try {
@@ -154,6 +302,11 @@ const MailList = () => {
                 startDate: dateStr,
                 endDate: dateStr,
                 isSend: false,
+                regionId: filterRegion?.value,
+                areaId: filterArea?.value,
+                organizationId: filterOrganization?.value,
+                branchId: filterBranch?.value,
+                receiver: debouncedFilterSender,
             })
 
             console.log('[fetchData] getAllMails result:', result)
@@ -169,9 +322,14 @@ const MailList = () => {
             filterDate,
             pageIndex,
             pageSize,
+            filterRegion,
+            filterArea,
+            filterOrganization,
+            filterBranch,
+            debouncedFilterSender,
         })
         fetchData()
-    }, [filterDate, pageIndex, pageSize])
+    }, [filterDate, pageIndex, pageSize, filterRegion, filterArea, filterOrganization, filterBranch, debouncedFilterSender])
 
     const onPaginationChange = (page: number) => {
         console.log('[onPaginationChange] page:', page)
@@ -196,11 +354,9 @@ const MailList = () => {
         }
 
         const result = mails.filter((item: any) => {
-            if (filterSender && !item.receiverName.toLowerCase().includes(filterSender.toLowerCase())) return false
-
             if (searchQuery) {
                 const query = searchQuery.toLowerCase()
-                return item.uid?.toLowerCase().includes(query) || item.receiverName?.toLowerCase().includes(query)
+                return item.uid?.toLowerCase().includes(query)
             }
 
             return true
@@ -208,7 +364,7 @@ const MailList = () => {
 
         console.log('[filteredMails] result:', result)
         return result
-    }, [mails, filterSender, searchQuery])
+    }, [mails, searchQuery])
 
     const isAllSelected = filteredMails.length > 0 && selectedIds.length === filteredMails.length
 
@@ -252,6 +408,11 @@ const MailList = () => {
                 startDate: dateStr,
                 endDate: dateStr,
                 isSend: false,
+                regionId: filterRegion?.value,
+                areaId: filterArea?.value,
+                organizationId: filterOrganization?.value,
+                branchId: filterBranch?.value,
+                receiver: debouncedFilterSender,
             })
 
             console.log('[handleExportExcel] blob:', blob)
@@ -519,7 +680,7 @@ const MailList = () => {
                     <div className="flex flex-wrap gap-4 items-center w-full lg:w-auto">
                         <div className="w-full sm:w-40">
                             <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Sana</label>
-                            <DatePicker value={filterDate} onChange={setFilterDate} size="sm" placeholder="Sanani tanlang" />
+                            <DatePicker value={filterDate} onChange={setFilterDate} size="sm" placeholder="Sanani tanlang" inputFormat="YYYY-MM-DD" />
                         </div>
                         <div className="w-full sm:w-48">
                             <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Qabul qiluvchi</label>
@@ -547,6 +708,57 @@ const MailList = () => {
                                 placeholder="ID bo'yicha..."
                             />
                         </div>
+                        <div className="w-full sm:w-40">
+                            <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Viloyat</label>
+                            <Select
+                                placeholder="Viloyat"
+                                options={regionOptions}
+                                isLoading={loadingRegions}
+                                value={filterRegion}
+                                onChange={handleRegionChange}
+                                size="sm"
+                            />
+                        </div>
+                        <div className="w-full sm:w-40">
+                            <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Tuman</label>
+                            <Select
+                                placeholder="Tuman"
+                                options={areaOptions}
+                                isLoading={loadingAreas}
+                                isDisabled={!filterRegion}
+                                value={filterArea}
+                                onChange={setFilterArea}
+                                size="sm"
+                            />
+                        </div>
+                        {isAdminRole && (
+                            <div className="w-full sm:w-48">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Tashkilot</label>
+                                <Select
+                                    placeholder="Tashkilot"
+                                    options={organizationOptions}
+                                    value={filterOrganization}
+                                    onChange={(option) => {
+                                        setFilterOrganization(option)
+                                        setFilterBranch(null)
+                                    }}
+                                    size="sm"
+                                />
+                            </div>
+                        )}
+                        {isBranchFilterRole && (
+                            <div className="w-full sm:w-48">
+                                <label className="text-xs font-bold text-gray-400 uppercase mb-1 block">Filial</label>
+                                <Select
+                                    placeholder="Filial"
+                                    options={branchOptions}
+                                    value={filterBranch}
+                                    onChange={setFilterBranch}
+                                    size="sm"
+                                />
+                            </div>
+                        )}
+                        
                     </div>
                     <div className="flex gap-2">
                         {selectedIds.length > 0 && (
@@ -571,6 +783,16 @@ const MailList = () => {
                                 O'chirish ({selectedIds.length})
                             </Button>
                         )}
+                        <Button
+                            variant="twoTone"
+                            color="sky-600"
+                            size="sm"
+                            icon={<HiOutlineRefresh />}
+                            loading={isLoading}
+                            onClick={fetchData}
+                        >
+                            Yangilash
+                        </Button>
                         <Button
                             variant="twoTone"
                             color="blue-600"
@@ -710,11 +932,17 @@ const MailList = () => {
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ].find((item) => item.value === pageSize)}
                             options={[
                                 { value: 10, label: '10 / page' },
                                 { value: 20, label: '20 / page' },
                                 { value: 50, label: '50 / page' },
+                                { value: 100, label: '100 / page' },
+                                { value: 200, label: '200 / page' },
+                                { value: 500, label: '500 / page' },
                             ]}
                             onChange={(option) => onSelectChange(option?.value || 10)}
                         />
