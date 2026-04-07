@@ -2,9 +2,7 @@ import { useState } from 'react'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Chart from '@/components/shared/Chart'
-import { TbMail, TbCalendarStats } from 'react-icons/tb'
-// If you don't have this types file, you can remove the import and use 'any' below
-import type { MailDashboardData } from '@/@types/dashboard'
+import { TbMail } from 'react-icons/tb'
 
 type MailOverviewProps = {
     // Making data optional to prevent crashes if parent passes undefined
@@ -24,6 +22,15 @@ const options: { value: Period; label: string }[] = [
 const MailOverview = ({ data }: MailOverviewProps) => {
     const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly')
 
+    const formatStatusLabel = (status: string | null | undefined): string => {
+        const lowerStatus = status?.toLowerCase() || 'null'
+
+        if (lowerStatus === 'success') return 'Yuborilgan'
+        if (lowerStatus === 'null') return 'Yuborilmagan'
+
+        return status || "Noma'lum"
+    }
+
     // --- FIX: Add Safety Defaults (|| []) ---
     // If data is undefined, these default to empty arrays preventing the "reduce" error
     const monthlyStats = data?.monthlyStats || []
@@ -32,11 +39,16 @@ const MailOverview = ({ data }: MailOverviewProps) => {
     const currentStats =
         selectedPeriod === 'monthly' ? monthlyStats : yearlyStats
 
-    // Calculate totals safely
-    const totalCount = currentStats.reduce(
-        (acc: number, item: any) => acc + (item.count || item.value || 0),
-        0,
-    )
+    const sentCount = currentStats.reduce((acc: number, item: any) => {
+        return item?.statusName?.toLowerCase() === 'success'
+            ? acc + (item.count || item.value || 0)
+            : acc
+    }, 0)
+    const unsentCount = currentStats.reduce((acc: number, item: any) => {
+        return (item?.statusName?.toLowerCase() || 'null') === 'null'
+            ? acc + (item.count || item.value || 0)
+            : acc
+    }, 0)
 
     // Prepare Chart Data safely
     const chartData = {
@@ -48,7 +60,9 @@ const MailOverview = ({ data }: MailOverviewProps) => {
                 ),
             },
         ],
-        xAxis: currentStats.map((item: any) => item.label || item.date || ''),
+        xAxis: currentStats.map((item: any) =>
+            formatStatusLabel(item.statusName || item.label || item.date || ''),
+        ),
     }
 
     return (
@@ -71,32 +85,29 @@ const MailOverview = ({ data }: MailOverviewProps) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-2xl p-3 bg-gray-50 dark:bg-gray-700/50 mt-4">
-                {/* Total Count Card */}
+                {/* Sent Count Card */}
                 <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
                     <div>
                         <div className="mb-2 text-sm font-semibold text-gray-500">
-                            Jami Yuborilgan (
-                            {selectedPeriod === 'monthly' ? 'Oy' : 'Yil'})
+                            Yuborilganlar
                         </div>
-                        <h3 className="text-2xl font-bold">{totalCount}</h3>
+                        <h3 className="text-2xl font-bold">{sentCount}</h3>
                     </div>
-                    <div className="flex items-center justify-center h-12 w-12 bg-indigo-100 text-indigo-600 rounded-full text-2xl">
+                    <div className="flex items-center justify-center h-12 w-12 bg-green-100 text-green-600 rounded-full text-2xl">
                         <TbMail />
                     </div>
                 </div>
 
-                {/* Period Info Card */}
+                {/* Unsent Count Card */}
                 <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
                     <div>
                         <div className="mb-2 text-sm font-semibold text-gray-500">
-                            Faol Kunlar
+                            Yuborilmaganlar
                         </div>
-                        <h3 className="text-2xl font-bold">
-                            {currentStats.length}
-                        </h3>
+                        <h3 className="text-2xl font-bold">{unsentCount}</h3>
                     </div>
-                    <div className="flex items-center justify-center h-12 w-12 bg-emerald-100 text-emerald-600 rounded-full text-2xl">
-                        <TbCalendarStats />
+                    <div className="flex items-center justify-center h-12 w-12 bg-slate-100 text-slate-600 rounded-full text-2xl">
+                        <TbMail />
                     </div>
                 </div>
             </div>
