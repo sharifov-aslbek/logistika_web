@@ -51,8 +51,8 @@ const MailDashboard = () => {
                             {/* 4. PASS EMPTY ARRAYS AS FALLBACKS */}
                             <MailOverview
                                 data={{
-                                    monthlyStats: safeData.monthlyStats || [],
-                                    yearlyStats: safeData.yearlyStats || [],
+                                    monthlyStats: safeData.mailStatusDistribution || [],
+                                    yearlyStats: safeData.mailStatusDistribution || [],
                                 }}
                             />
                         </div>
