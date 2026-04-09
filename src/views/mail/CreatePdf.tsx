@@ -110,62 +110,95 @@ const PdfUploadField = ({
     onChange: (files: File[]) => void
     onRemove: () => void
 }) => {
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+
+    useEffect(() => {
+        if (!file) {
+            setPreviewUrl(null)
+            return
+        }
+
+        const objectUrl = URL.createObjectURL(file)
+        setPreviewUrl(objectUrl)
+
+        return () => {
+            URL.revokeObjectURL(objectUrl)
+        }
+    }, [file])
+
     return (
         <FormItem
             label="Hujjat yuklash"
             invalid={invalid}
             errorMessage={errorMessage}
         >
-            <Upload
-                draggable
-                accept=".pdf"
-                fileList={fileList}
-                multiple={false}
-                showList={false}
-                uploadLimit={1}
-                className="border-2 border-dashed border-gray-300 transition-all rounded-xl p-8 hover:border-indigo-500 hover:bg-indigo-50 dark:border-gray-600 dark:hover:bg-gray-800"
-                onChange={onChange}
-            >
-                <div className="flex flex-col items-center justify-center">
-                    {!file ? (
-                        <>
-                            <div className="mb-4 rounded-full bg-indigo-100 p-4 text-5xl text-indigo-500">
-                                <HiOutlineCloudUpload />
+            <>
+                <Upload
+                    draggable
+                    accept=".pdf"
+                    fileList={fileList}
+                    multiple={false}
+                    showList={false}
+                    uploadLimit={1}
+                    className="border-2 border-dashed border-gray-300 transition-all rounded-xl p-8 hover:border-indigo-500 hover:bg-indigo-50 dark:border-gray-600 dark:hover:bg-gray-800"
+                    onChange={onChange}
+                >
+                    <div className="flex flex-col items-center justify-center">
+                        {!file ? (
+                            <>
+                                <div className="mb-4 rounded-full bg-indigo-100 p-4 text-5xl text-indigo-500">
+                                    <HiOutlineCloudUpload />
+                                </div>
+                                <div className="text-lg font-semibold text-gray-700 dark:text-gray-200">
+                                    Faylni tanlash yoki shu yerga tashlash
+                                </div>
+                                <div className="mt-2 text-sm text-gray-400">
+                                    Faqat PDF (maks. 10MB)
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center">
+                                <div className="mb-4 text-6xl text-red-500">
+                                    <HiOutlineDocumentText />
+                                </div>
+                                <div className="mb-1 text-lg font-bold text-gray-800 dark:text-white">
+                                    {file.name}
+                                </div>
+                                <div className="mb-4 text-xs text-gray-400">
+                                    {(file.size / 1024 / 1024).toFixed(2)} MB
+                                </div>
+                                <Button
+                                    size="sm"
+                                    variant="solid"
+                                    color="red-500"
+                                    icon={<HiOutlineTrash />}
+                                    onClick={(event) => {
+                                        event.stopPropagation()
+                                        onRemove()
+                                    }}
+                                >
+                                    Faylni o'chirish
+                                </Button>
                             </div>
-                            <div className="text-lg font-semibold text-gray-700 dark:text-gray-200">
-                                Faylni tanlash yoki shu yerga tashlash
-                            </div>
-                            <div className="mt-2 text-sm text-gray-400">
-                                Faqat PDF (maks. 10MB)
-                            </div>
-                        </>
-                    ) : (
-                        <div className="flex flex-col items-center">
-                            <div className="mb-4 text-6xl text-red-500">
-                                <HiOutlineDocumentText />
-                            </div>
-                            <div className="mb-1 text-lg font-bold text-gray-800 dark:text-white">
-                                {file.name}
-                            </div>
-                            <div className="mb-4 text-xs text-gray-400">
-                                {(file.size / 1024 / 1024).toFixed(2)} MB
-                            </div>
-                            <Button
-                                size="sm"
-                                variant="solid"
-                                color="red-500"
-                                icon={<HiOutlineTrash />}
-                                onClick={(event) => {
-                                    event.stopPropagation()
-                                    onRemove()
-                                }}
-                            >
-                                Faylni o'chirish
-                            </Button>
+                        )}
+                    </div>
+                </Upload>
+
+                {previewUrl && (
+                    <div className="mt-4 overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+                        <div className="border-b border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:text-gray-200">
+                            PDF ko'rinishi
                         </div>
-                    )}
-                </div>
-            </Upload>
+                        <div className="h-[70vh] w-full bg-gray-100 dark:bg-gray-950">
+                            <iframe
+                                src={previewUrl}
+                                className="h-full w-full"
+                                title="PDF preview"
+                            />
+                        </div>
+                    </div>
+                )}
+            </>
         </FormItem>
     )
 }
