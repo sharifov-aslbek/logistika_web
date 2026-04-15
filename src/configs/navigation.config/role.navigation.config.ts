@@ -8,6 +8,7 @@ import {
     ROLE_WORKER,
     ROLE_BRANCH_DIRECTOR,
     ROLE_ADMIN,
+    ROLE_SUPER_ADMIN,
 } from '@/constants/usertype.constant'
 import type { NavigationTree } from '@/@types/navigation'
 
@@ -259,6 +260,68 @@ const adminGroup: NavigationTree = {
         },
     ],
 }
+// System Admin Specific Submenu
+const superAdminGroup: NavigationTree = {
+    key: 'super-admin-group',
+    path: '',
+    title: 'Admin paneli',
+    translateKey: '', 
+    icon: 'desktop',
+    type: NAV_ITEM_TYPE_TITLE,
+    authority: [],
+    subMenu: [
+        {
+            key: 'admin-all-organizations',
+            path: '/admin/organizations',
+            title: 'Tashkilotlar',
+            translateKey: 'menu.adminOrganizations',
+            icon: 'hi-outline-office-building',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
+        {
+            key: 'admin-all-branches',
+            path: '/admin/branches',
+            title: 'Filiallar',
+            translateKey: 'menu.adminBranches',
+            icon: 'hi-outline-library',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
+        {
+            key: 'admin-all-users',
+            path: '/admin/users',
+            title: 'Foydalanuvchilar',
+            translateKey: 'menu.adminUsers',
+            icon: 'hi-outline-users',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
+        {
+            key: 'admin-all-mails-statistics',
+            path: '/admin/mails/statistics',
+            title: 'Xatlar statistikasi',
+            translateKey: 'menu.adminMails',
+            icon: 'hi-outline-chart-bar',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
+        {
+            key: 'admin-all-templates',
+            path: '/admin/mail/all',
+            title: 'Shablonlar',
+            translateKey: 'menu.adminTemplates',
+            icon: 'hi-outline-template',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        }
+    ],
+}
 
 // --- EXPORT CONFIGS ---
 
@@ -282,10 +345,15 @@ export const branchNavigationConfig: NavigationTree[] = [
     commonResourcesGroup,
 ]
 
-// 4. Admin / Organization Director Navigation (Role 30)
+// 4. Organization Director Navigation (Role 30)
 export const adminNavigationConfig: NavigationTree[] = [
     adminGroup,
     commonMailGroup,
+    commonResourcesGroup,
+]
+// 5. Super Admin Navigation (Role 50) - Система администратор
+export const superAdminNavigationConfig: NavigationTree[] = [
+    superAdminGroup,
     commonResourcesGroup,
 ]
 
@@ -294,6 +362,8 @@ export const getNavigationByRole = (role: number | string) => {
     const roleNum = Number(role)
 
     switch (roleNum) {
+        case ROLE_SUPER_ADMIN:
+            return superAdminNavigationConfig
         case ROLE_ADMIN:
             return adminNavigationConfig
         case ROLE_BRANCH_DIRECTOR:
