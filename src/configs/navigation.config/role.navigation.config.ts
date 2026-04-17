@@ -313,7 +313,7 @@ const superAdminGroup: NavigationTree = {
         {
             key: 'admin-all-templates',
             path: '/admin/mail/all',
-            title: 'Shablonlar',
+            title: 'Barcha xatlar',
             translateKey: 'menu.adminTemplates',
             icon: 'hi-outline-template',
             type: NAV_ITEM_TYPE_ITEM,
