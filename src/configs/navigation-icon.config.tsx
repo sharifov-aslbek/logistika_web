@@ -104,6 +104,9 @@ import {
     PiBriefcaseDuotone, 
     PiBankDuotone
 } from 'react-icons/pi'
+import {
+    HiOutlineChartBar, 
+} from 'react-icons/hi'
 import type { JSX } from 'react'
 
 export type NavigationIcons = Record<string, JSX.Element>
@@ -227,6 +230,7 @@ const navigationIcon: NavigationIcons = {
     'hi-outline-clipboard-list': <PiClipboardTextDuotone />, // Resurslar
     'hi-outline-briefcase': <PiBriefcaseDuotone />,     // Ishchi paneli
     'hi-outline-library': <PiBankDuotone />,            // Filialni boshqarish
+    'hi-outline-chart-bar': <HiOutlineChartBar />,      // Statistika
 }
 
 export default navigationIcon

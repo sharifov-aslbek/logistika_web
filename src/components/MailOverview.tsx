@@ -2,14 +2,27 @@ import { useState } from 'react'
 import Card from '@/components/ui/Card'
 import Select from '@/components/ui/Select'
 import Chart from '@/components/shared/Chart'
-import { TbMail } from 'react-icons/tb'
+import { TbMail, TbCheck } from 'react-icons/tb'
+
+type MailStatItem = {
+    count?: number
+    value?: number
+    statusName?: string | null
+    label?: string
+    date?: string
+}
 
 type MailOverviewProps = {
-    // Making data optional to prevent crashes if parent passes undefined
     data?: {
-        monthlyStats?: any[]
-        yearlyStats?: any[]
+        monthlyStats?: MailStatItem[]
+        yearlyStats?: MailStatItem[]
+        createdMail?: number
+        successSentMail?: number
     }
+    isAdmin?: boolean
+    totalMails?: number
+    sentToday?: number
+    hideStats?: boolean // <-- Добавили флаг для скрытия внутренних карточек
 }
 
 type Period = 'monthly' | 'yearly'
@@ -19,7 +32,9 @@ const options: { value: Period; label: string }[] = [
     { value: 'yearly', label: 'Bu yil' },
 ]
 
-const MailOverview = ({ data }: MailOverviewProps) => {
+
+
+const MailOverview = ({ data, isAdmin = false, totalMails = 0, sentToday = 0, hideStats = false }: MailOverviewProps) => {
     const [selectedPeriod, setSelectedPeriod] = useState<Period>('monthly')
 
     const formatStatusLabel = (status: string | null | undefined): string => {
@@ -31,44 +46,40 @@ const MailOverview = ({ data }: MailOverviewProps) => {
         return status || "Noma'lum"
     }
 
-    // --- FIX: Add Safety Defaults (|| []) ---
-    // If data is undefined, these default to empty arrays preventing the "reduce" error
     const monthlyStats = data?.monthlyStats || []
     const yearlyStats = data?.yearlyStats || []
+    const createdMail = data?.createdMail ?? 0
+    const successSentMail = data?.successSentMail ?? 0
+    const currentStats = selectedPeriod === 'monthly' ? monthlyStats : yearlyStats
 
-    const currentStats =
-        selectedPeriod === 'monthly' ? monthlyStats : yearlyStats
-
-    const sentCount = currentStats.reduce((acc: number, item: any) => {
-        return item?.statusName?.toLowerCase() === 'success'
-            ? acc + (item.count || item.value || 0)
-            : acc
-    }, 0)
-    const unsentCount = currentStats.reduce((acc: number, item: any) => {
-        return (item?.statusName?.toLowerCase() || 'null') === 'null'
-            ? acc + (item.count || item.value || 0)
-            : acc
-    }, 0)
-
-    // Prepare Chart Data safely
     const chartData = {
         series: [
             {
                 name: 'Xatlar',
                 data: currentStats.map(
-                    (item: any) => item.count || item.value || 0,
+                    (item: MailStatItem) => item.count || item.value || 0,
                 ),
             },
         ],
-        xAxis: currentStats.map((item: any) =>
+        xAxis: currentStats.map((item: MailStatItem) =>
             formatStatusLabel(item.statusName || item.label || item.date || ''),
         ),
     }
 
+    const stat1Value = isAdmin ? totalMails : createdMail
+    const stat1Label = isAdmin ? 'Barcha xatlar' : 'Yuborilmaganlar';
+    const stat1Color = isAdmin ? 'bg-blue-50 dark:bg-blue-500/20 text-blue-600 dark:text-blue-100' : 'bg-green-100 text-green-600';
+    const stat1Icon = isAdmin ? <TbMail /> : <TbMail />;
+
+    const stat2Value = isAdmin ? sentToday : successSentMail;
+    const stat2Label = isAdmin ? 'Bugun yuborilgan xatlar' : 'Yuborilgan';
+    const stat2Color = isAdmin ? 'bg-green-50 dark:bg-green-500/20 text-green-600 dark:text-green-100' : 'bg-slate-100 text-slate-600';
+    const stat2Icon = isAdmin ? <TbCheck /> : <TbMail />;
+
     return (
-        <Card>
+        <Card className="h-full">
             <div className="flex items-center justify-between">
-                <h4>Xatlar Statistikasi</h4>
+                <h4 className="text-lg font-bold text-gray-800">Xatlar Statistikasi</h4>
                 <Select
                     className="w-[140px]"
                     size="sm"
@@ -84,33 +95,34 @@ const MailOverview = ({ data }: MailOverviewProps) => {
                 />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-2xl p-3 bg-gray-50 dark:bg-gray-700/50 mt-4">
-                {/* Sent Count Card */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <div className="mb-2 text-sm font-semibold text-gray-500">
-                            Yuborilganlar
+            {/* Показываем карточки только если hideStats === false */}
+            {!hideStats && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 rounded-2xl p-3 bg-gray-50 dark:bg-gray-700/50 mt-4">
+                    <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
+                        <div>
+                            <div className="mb-2 text-sm font-semibold text-gray-500">
+                                {stat1Label}
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{stat1Value}</h3>
                         </div>
-                        <h3 className="text-2xl font-bold">{sentCount}</h3>
+                        <div className={`flex items-center justify-center h-12 w-12 rounded-full text-2xl ${stat1Color}`}>
+                            {stat1Icon}
+                        </div>
                     </div>
-                    <div className="flex items-center justify-center h-12 w-12 bg-green-100 text-green-600 rounded-full text-2xl">
-                        <TbMail />
-                    </div>
-                </div>
 
-                {/* Unsent Count Card */}
-                <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
-                    <div>
-                        <div className="mb-2 text-sm font-semibold text-gray-500">
-                            Yuborilmaganlar
+                    <div className="p-4 rounded-2xl bg-white dark:bg-gray-800 shadow-sm flex items-center justify-between">
+                        <div>
+                            <div className="mb-2 text-sm font-semibold text-gray-500">
+                                {stat2Label}
+                            </div>
+                            <h3 className="text-2xl font-bold text-gray-800 dark:text-white">{stat2Value}</h3>
                         </div>
-                        <h3 className="text-2xl font-bold">{unsentCount}</h3>
-                    </div>
-                    <div className="flex items-center justify-center h-12 w-12 bg-slate-100 text-slate-600 rounded-full text-2xl">
-                        <TbMail />
+                        <div className={`flex items-center justify-center h-12 w-12 rounded-full text-2xl ${stat2Color}`}>
+                            {stat2Icon}
+                        </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             <div className="mt-6">
                 <Chart
@@ -120,7 +132,7 @@ const MailOverview = ({ data }: MailOverviewProps) => {
                     height="350px"
                     customOptions={{
                         legend: { show: false },
-                        colors: ['#6366f1'], // Indigo color
+                        colors: ['#6366f1'],
                         fill: {
                             type: 'gradient',
                             gradient: {

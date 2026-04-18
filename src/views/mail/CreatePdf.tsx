@@ -650,10 +650,15 @@ const CreatePdf = () => {
     const handleExternalSubmit = async (values: any, { resetForm }: any) => {
         const formData = new FormData()
         formData.append('PinflOrInn', values.pinflOrInn)
-        formData.append(
+        if(role != 0) {
+             formData.append(
             'OrganizationId',
-            values.organizationId?.toString() || userProfile?.workingOrganizationId?.toString() || '',
+            values.organizationId?.toString() || userProfile?.workingOrganizationId?.toString() || null,
         )
+        } else {
+            formData.append('OrganizationId', "")
+        }
+       
         formData.append('BranchId', values.branchId?.toString() || '')
         formData.append('PdfFile', values.file)
 
