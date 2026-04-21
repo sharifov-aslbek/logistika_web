@@ -30,20 +30,48 @@ const AdminUsers = () => {
     const [resetPassModal, setResetPassModal] = useState<any | null>(null)
     const [newPassword, setNewPassword] = useState('')
 
+    // 1. Добавляем состояние для пагинации
+    const [tableData, setTableData] = useState({
+        pageIndex: 1,
+        pageSize: 10,
+        total: 0,
+    })
+
+    // 2. Добавляем зависимости в useEffect, чтобы данные обновлялись при смене страницы
     useEffect(() => {
         fetchData()
-    }, [])
+    }, [tableData.pageIndex, tableData.pageSize])
 
     const fetchData = async () => {
         setLoading(true)
         try {
-            const response: any = await apiGetAdminUsers({ PageSize: 50, PageIndex: 1 })
+            // Передаем динамические параметры
+            const response: any = await apiGetAdminUsers({ 
+                PageSize: tableData.pageSize, 
+                PageIndex: tableData.pageIndex 
+            })
+            
             setData(response?.data?.items || response?.items || response?.data || [])
+            
+            // Обновляем общее количество записей (total) из ответа бэкенда
+            setTableData((prev) => ({
+                ...prev,
+                total: response?.data?.totalCount || response?.totalCount || response?.data?.length || 0,
+            }))
         } catch (error) {
             console.error('Foydalanuvchilarni yuklashda xatolik', error)
         } finally {
             setLoading(false)
         }
+    }
+
+    // 3. Функции-обработчики для таблицы
+    const onPaginationChange = (page: number) => {
+        setTableData((prev) => ({ ...prev, pageIndex: page }))
+    }
+
+    const onSelectChange = (value: number) => {
+        setTableData((prev) => ({ ...prev, pageSize: value, pageIndex: 1 }))
     }
 
     // Изменение статуса пользователя
@@ -167,7 +195,7 @@ const AdminUsers = () => {
     )
 
     return (
-        <>
+        <div className="flex flex-col p-5 gap-4 h-full relative">
             <AdaptiveCard className="h-full" bodyClass="h-full">
                 <div className="flex items-center justify-between mb-4">
                     <div>
@@ -179,11 +207,9 @@ const AdminUsers = () => {
                     columns={columns}
                     data={data}
                     loading={loading}
-                    pagingData={{
-                        total: data.length,
-                        pageIndex: 1,
-                        pageSize: data.length > 0 ? data.length : 10,
-                    }}
+                    pagingData={tableData}
+                    onPaginationChange={onPaginationChange}
+                    onSelectChange={onSelectChange}
                 />
             </AdaptiveCard>
 
@@ -235,7 +261,7 @@ const AdminUsers = () => {
                     </div>
                 </div>
             )}
-        </>
+        </div>
     )
 }
 

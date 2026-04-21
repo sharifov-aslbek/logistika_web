@@ -106,6 +106,7 @@ import {
 } from 'react-icons/pi'
 import {
     HiOutlineChartBar, 
+    HiOutlineDocumentDuplicate
 } from 'react-icons/hi'
 import type { JSX } from 'react'
 
@@ -231,6 +232,7 @@ const navigationIcon: NavigationIcons = {
     'hi-outline-briefcase': <PiBriefcaseDuotone />,     // Ishchi paneli
     'hi-outline-library': <PiBankDuotone />,            // Filialni boshqarish
     'hi-outline-chart-bar': <HiOutlineChartBar />,      // Statistika
+    'hi-outline-document-duplicate': <HiOutlineDocumentDuplicate />, // Shablonlar
 }
 
 export default navigationIcon

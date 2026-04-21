@@ -74,19 +74,19 @@ const AdminBranches = () => {
                 accessorKey: 'directorPinfl',
                 cell: (props) => <span className="font-mono text-gray-600">{props.row.original.directorPinfl || '-'}</span>,
             },
-            {
-                header: 'Amallar',
-                id: 'action',
-                cell: (props) => (
-                    <button 
-                        onClick={() => setEditModal(props.row.original)}
-                        className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                        title="Редактировать"
-                    >
-                        <HiOutlinePencil className="text-lg" />
-                    </button>
-                ),
-            },
+            // {
+            //     header: 'Amallar',
+            //     id: 'action',
+            //     cell: (props) => (
+            //         <button 
+            //             onClick={() => setEditModal(props.row.original)}
+            //             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
+            //             title="Редактировать"
+            //         >
+            //             <HiOutlinePencil className="text-lg" />
+            //         </button>
+            //     ),
+            // },
         ],
         []
     )

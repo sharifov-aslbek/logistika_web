@@ -300,16 +300,16 @@ const superAdminGroup: NavigationTree = {
             authority: [],
             subMenu: [],
         },
-        {
-            key: 'admin-all-mails-statistics',
-            path: '/admin/mails/statistics',
-            title: 'Xatlar statistikasi',
-            translateKey: 'menu.adminMails',
-            icon: 'hi-outline-chart-bar',
-            type: NAV_ITEM_TYPE_ITEM,
-            authority: [],
-            subMenu: [],
-        },
+        // {
+        //     key: 'admin-all-mails-statistics',
+        //     path: '/admin/mails/statistics',
+        //     title: 'Xatlar statistikasi',
+        //     translateKey: 'menu.adminMails',
+        //     icon: 'hi-outline-chart-bar',
+        //     type: NAV_ITEM_TYPE_ITEM,
+        //     authority: [],
+        //     subMenu: [],
+        // },
         {
             key: 'admin-all-templates',
             path: '/admin/mail/all',
@@ -319,7 +319,17 @@ const superAdminGroup: NavigationTree = {
             type: NAV_ITEM_TYPE_ITEM,
             authority: [],
             subMenu: [],
-        }
+        },
+        {
+            key: 'admin-templates',
+            path: '/admin/templates',
+            title: 'Shablonlar',
+            translateKey: 'menu.adminTemplatesList',
+            icon: 'hi-outline-document-duplicate',
+            type: NAV_ITEM_TYPE_ITEM,
+            authority: [],
+            subMenu: [],
+        },
     ],
 }
 
