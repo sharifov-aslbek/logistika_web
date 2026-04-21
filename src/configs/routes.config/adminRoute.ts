@@ -9,15 +9,9 @@ const adminRoute: Routes = [
         authority: [], // Здесь можно указать [ROLE_SUPER_ADMIN], если у вас есть строгая защита
     },
     {
-        key: 'admin.mails.statistics',
-        path: '/admin/mails/statistics',
-        component: lazy(() => import('@/views/admin/AdminMailsStatistics/adminMailsStatistics')),
-        authority: [], 
-    },
-    {
         key: 'admin.mail.all',
         path: '/admin/mail/all',
-        component: lazy(() => import('@/views/admin/AdminMails/AdminMails')),
+        component: lazy(() => import('@/views/admin/AdminMails/adminMails')),
         authority: [], 
     },
     {
@@ -37,6 +31,11 @@ const adminRoute: Routes = [
         path: '/admin/users',
         component: lazy(() => import('@/views/admin/AdminUsers/adminUsers')),
         authority: [],
+    },
+    {
+        key: 'admin.templates',
+        path: '/admin/templates',
+        component: lazy(() => import('@/views/admin/AdminTemplates/adminTemplate'))
     }
 ]
 
