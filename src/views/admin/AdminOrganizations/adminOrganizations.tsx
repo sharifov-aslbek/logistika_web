@@ -242,7 +242,8 @@ const AdminOrganizations = () => {
     }
 
     const columns = useMemo<ColumnDef<AdminOrganization>[]>(
-        () => [
+        () =>
+            [
             {
                 header: 'ID',
                 accessorKey: 'id',
@@ -324,6 +325,24 @@ const AdminOrganizations = () => {
                 },
             },
             {
+                header: 'Yaratilgan xatlar',
+                accessorKey: 'createdMailsCount',
+                cell: (props) => (
+                    <span className="font-medium text-gray-700">
+                        {props.row.original.createdMailsCount ?? 0}
+                    </span>
+                ),
+            },
+            {
+                header: 'Yuborilgan xatlar',
+                accessorKey: 'sentMailsCount',
+                cell: (props) => (
+                    <span className="font-medium text-gray-700">
+                        {props.row.original.sentMailsCount ?? 0}
+                    </span>
+                ),
+            },
+            {
                 header: 'Manzil',
                 accessorKey: 'address',
                 cell: (props) => (
@@ -338,20 +357,24 @@ const AdminOrganizations = () => {
             {
                 header: 'Filiallar',
                 id: 'branches',
-                cell: (props) => (
-                    <button
-                        className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
-                        onClick={() =>
-                            navigate(
-                                `/admin/branches?organizationId=${props.row.original.id}`,
-                            )
-                        }
-                    >
-                        Filialarni ko&apos;rish
-                    </button>
-                ),
+                cell: (props) =>
+                    props.row.original.isYatt ? null : (
+                        <button
+                            className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                            onClick={() =>
+                                navigate(
+                                    `/admin/branches?organizationId=${props.row.original.id}`,
+                                )
+                            }
+                        >
+                            Filialarni ko&apos;rish
+                        </button>
+                    ),
             },
-        ],
+        ].map((column) => ({
+            ...column,
+            enableSorting: false,
+        })),
         [navigate],
     )
 
@@ -438,7 +461,7 @@ const AdminOrganizations = () => {
                     pagingData={tableData}
                     onPaginationChange={onPaginationChange}
                     onSelectChange={onSelectChange}
-                />
+                /> 
             </AdaptiveCard>
         </div>
     )

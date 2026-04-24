@@ -21,6 +21,7 @@ type AdminBranch = {
 type AdminOrganizationOption = {
     id: number
     fullName?: string
+    isYatt?: boolean
 }
 
 type BranchListPayload = {
@@ -134,7 +135,7 @@ const AdminBranches = () => {
             const items = getOrganizationItems(response)
             setOrganizationOptions(
                 items
-                    .filter((item) => item.id > 0)
+                    .filter((item) => item.id > 0 && !item.isYatt)
                     .map((item) => ({
                         value: item.id,
                         label: item.fullName || `Tashkilot #${item.id}`,
@@ -216,6 +217,14 @@ const AdminBranches = () => {
         }))
     }
 
+    const organizationNameMap = useMemo(
+        () =>
+            Object.fromEntries(
+                organizationOptions.map((option) => [option.value, option.label]),
+            ) as Record<number, string>,
+        [organizationOptions],
+    )
+
     const columns = useMemo<ColumnDef<AdminBranch>[]>(
         () => [
             {
@@ -240,8 +249,9 @@ const AdminBranches = () => {
             {
                 header: 'Kod',
                 accessorKey: 'code',
+                size: 220,
                 cell: (props) => (
-                    <span className="rounded bg-gray-100 px-2 py-1 font-mono text-xs">
+                    <span className="inline-flex whitespace-nowrap rounded bg-gray-100 px-2 py-1 font-mono text-xs">
                         {props.row.original.code || '-'}
                     </span>
                 ),
@@ -254,6 +264,25 @@ const AdminBranches = () => {
                         {props.row.original.organizationId || '-'}
                     </span>
                 ),
+            },
+            {
+                header: 'Organization name',
+                id: 'organizationName',
+                cell: (props) => {
+                    const organizationId = props.row.original.organizationId
+                    const organizationName = organizationId
+                        ? organizationNameMap[organizationId]
+                        : ''
+
+                    return (
+                        <div
+                            className="max-w-[260px] truncate text-sm text-gray-500"
+                            title={organizationName}
+                        >
+                            {organizationName || '-'}
+                        </div>
+                    )
+                },
             },
             {
                 header: 'Manzil',
@@ -277,7 +306,7 @@ const AdminBranches = () => {
                 ),
             },
         ],
-        [],
+        [organizationNameMap],
     )
 
     const selectedOrganizationOption =
