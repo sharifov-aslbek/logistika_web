@@ -1,61 +1,263 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import AdaptiveCard from '@/components/shared/AdaptiveCard'
 import DataTable from '@/components/shared/DataTable'
-import { apiGetAdminOrganizations, apiPutAdminOrganization } from '@/services/AdminOrganizationService'
+import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
+import { apiGetAdminOrganizations } from '@/services/AdminOrganizationService'
+import { apiGetUserById } from '@/services/UserService'
 import type { ColumnDef } from '@tanstack/react-table'
-import { HiOutlinePencil, HiOutlineX } from 'react-icons/hi'
+import { useNavigate } from 'react-router-dom'
+import { HiOutlineRefresh } from 'react-icons/hi'
+
+const ACTIVE_WITH_TAX_STATUS =
+    'Фаолият кўрсатаётган ва солиқ мажбуриятига эга'
+
+type OrganizationStatusValue = typeof ACTIVE_WITH_TAX_STATUS | 'Active'
+
+type StatusOption = {
+    value: OrganizationStatusValue
+    label: OrganizationStatusValue
+}
+
+type AdminOrganization = {
+    id: number
+    isYatt?: boolean
+    fullName?: string
+    shortName?: string
+    status?: string
+    inn?: string
+    mfo?: string
+    account?: string
+    address?: string
+    oked?: string
+    accountant?: string
+    directorId?: number | null
+    directorPinfl?: string
+    createdOn?: string
+    branchesCount?: number
+    workersCount?: number
+    createdMailsCount?: number
+    sentMailsCount?: number
+    directorName?: string
+}
+
+type OrganizationListPayload = {
+    items?: AdminOrganization[]
+    totalCount?: number
+}
+
+type OrganizationListResponse = {
+    data?: OrganizationListPayload | AdminOrganization[]
+    items?: AdminOrganization[]
+    totalCount?: number
+}
+
+type UserProfileResponse = {
+    data?: {
+        fullName?: string
+    }
+}
+
+const statusOptions: StatusOption[] = [
+    {
+        value: ACTIVE_WITH_TAX_STATUS,
+        label: ACTIVE_WITH_TAX_STATUS,
+    },
+    {
+        value: 'Active',
+        label: 'Active',
+    },
+]
+
+const getOrganizationItems = (
+    response: OrganizationListResponse,
+): AdminOrganization[] => {
+    if (Array.isArray(response?.data)) {
+        return response.data
+    }
+
+    return response?.data?.items || response?.items || []
+}
+
+const getOrganizationTotal = (
+    response: OrganizationListResponse,
+    fallbackLength: number,
+) => {
+    if (Array.isArray(response?.data)) {
+        return response.data.length
+    }
+
+    return (
+        response?.data?.totalCount ||
+        response?.totalCount ||
+        response?.items?.length ||
+        fallbackLength
+    )
+}
 
 const AdminOrganizations = () => {
-    const [data, setData] = useState<any[]>([])
+    const navigate = useNavigate()
+    const [data, setData] = useState<AdminOrganization[]>([])
     const [loading, setLoading] = useState(false)
-    const [editModal, setEditModal] = useState<any | null>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [statusFilter, setStatusFilter] = useState<
+        OrganizationStatusValue | ''
+    >('')
+    const [tableData, setTableData] = useState({
+        pageIndex: 1,
+        pageSize: 10,
+        total: 0,
+    })
+
+    const directorNameCacheRef = useRef<Record<number, string>>({})
+    const requestIdRef = useRef(0)
+
+    const getDirectorName = useCallback(
+        async (directorId?: number | null) => {
+            if (!directorId) {
+                return '-'
+            }
+
+            const cachedName = directorNameCacheRef.current[directorId]
+            if (cachedName) {
+                return cachedName
+            }
+
+            try {
+                const response =
+                    await apiGetUserById<UserProfileResponse>(directorId)
+                const fullName = response?.data?.fullName?.trim() || '-'
+                directorNameCacheRef.current[directorId] = fullName
+                return fullName
+            } catch (error) {
+                console.error(
+                    `Direktor ma'lumotini olishda xatolik (userId: ${directorId})`,
+                    error,
+                )
+                directorNameCacheRef.current[directorId] = '-'
+                return '-'
+            }
+        },
+        [],
+    )
+
+    const fetchData = useCallback(async () => {
+        const currentRequestId = ++requestIdRef.current
+        setLoading(true)
+
+        try {
+            const params: Record<string, string | number> = {
+                PageSize: tableData.pageSize,
+                PageIndex: tableData.pageIndex,
+            }
+
+            const trimmedSearchTerm = searchTerm.trim()
+            if (trimmedSearchTerm) {
+                params.SearchTerm = trimmedSearchTerm
+            }
+
+            if (statusFilter) {
+                params.Status = statusFilter
+            }
+
+            const response =
+                await apiGetAdminOrganizations<
+                    OrganizationListResponse,
+                    Record<string, string | number>
+                >(params)
+
+            const items = getOrganizationItems(response)
+            const directorIds = Array.from(
+                new Set(
+                    items
+                        .map((item) => item.directorId)
+                        .filter(
+                            (directorId): directorId is number =>
+                                typeof directorId === 'number' && directorId > 0,
+                        ),
+                ),
+            )
+
+            const directorNameEntries = await Promise.all(
+                directorIds.map(async (directorId) => {
+                    const directorName = await getDirectorName(directorId)
+                    return [directorId, directorName] as const
+                }),
+            )
+
+            if (currentRequestId !== requestIdRef.current) {
+                return
+            }
+
+            const directorNameMap = Object.fromEntries(directorNameEntries)
+            const mappedItems = items.map((item) => ({
+                ...item,
+                directorName: item.directorId
+                    ? directorNameMap[item.directorId] || '-'
+                    : '-',
+            }))
+
+            setData(mappedItems)
+            setTableData((prev) => ({
+                ...prev,
+                total: getOrganizationTotal(response, items.length),
+            }))
+        } catch (error) {
+            console.error('Tashkilotlarni yuklashda xatolik', error)
+            if (currentRequestId === requestIdRef.current) {
+                setData([])
+                setTableData((prev) => ({
+                    ...prev,
+                    total: 0,
+                }))
+            }
+        } finally {
+            if (currentRequestId === requestIdRef.current) {
+                setLoading(false)
+            }
+        }
+    }, [getDirectorName, searchTerm, statusFilter, tableData.pageIndex, tableData.pageSize])
 
     useEffect(() => {
-        fetchData()
-    }, [])
+        const timeoutId = window.setTimeout(() => {
+            fetchData()
+        }, 350)
 
-    const fetchData = async () => {
-        setLoading(true)
-        try {
-            const response: any = await apiGetAdminOrganizations({ PageSize: 50, PageIndex: 1 })
-            setData(response?.data?.items || response?.items || response?.data || [])
-        } catch (error) {
-            console.error('Ошибка при загрузке организаций', error)
-        } finally {
-            setLoading(false)
-        }
+        return () => window.clearTimeout(timeoutId)
+    }, [fetchData])
+
+    const onPaginationChange = (page: number) => {
+        setTableData((prev) => ({
+            ...prev,
+            pageIndex: page,
+        }))
     }
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!editModal) return
-        try {
-            await apiPutAdminOrganization(editModal.id, editModal)
-            setEditModal(null)
-            fetchData() // Обновляем таблицу после сохранения
-        } catch (error) {
-            console.error('Ошибка при сохранении', error)
-            alert('Ошибка при сохранении данных организации')
-        }
+    const onSelectChange = (value: number) => {
+        setTableData((prev) => ({
+            ...prev,
+            pageIndex: 1,
+            pageSize: value,
+        }))
     }
 
-    const columns = useMemo<ColumnDef<any>[]>(
+    const columns = useMemo<ColumnDef<AdminOrganization>[]>(
         () => [
             {
                 header: 'ID',
                 accessorKey: 'id',
-                cell: (props) => <span className="text-gray-500">#{props.row.original.id}</span>,
+                cell: (props) => (
+                    <span className="text-gray-500">#{props.row.original.id}</span>
+                ),
             },
             {
-                header: 'Qisqa ismi',
-                accessorKey: 'shortName',
-                cell: (props) => <span className="font-medium">{props.row.original.shortName || '-'}</span>,
-            },
-            {
-                header: 'To\'liq ismi',
+                header: "To'liq ismi",
                 accessorKey: 'fullName',
                 cell: (props) => (
-                    <div className="max-w-[250px] truncate" title={props.row.original.fullName}>
+                    <div
+                        className="max-w-[280px] truncate font-medium"
+                        title={props.row.original.fullName}
+                    >
                         {props.row.original.fullName || '-'}
                     </div>
                 ),
@@ -63,14 +265,39 @@ const AdminOrganizations = () => {
             {
                 header: 'INN',
                 accessorKey: 'inn',
-                cell: (props) => <span className="font-mono text-gray-600">{props.row.original.inn || '-'}</span>,
+                cell: (props) => (
+                    <span className="font-mono text-gray-600">
+                        {props.row.original.inn || '-'}
+                    </span>
+                ),
             },
             {
-                header: 'Manzil',
-                accessorKey: 'address',
+                header: 'Direktor PINFL',
+                accessorKey: 'directorPinfl',
                 cell: (props) => (
-                    <div className="max-w-[200px] truncate" title={props.row.original.address}>
-                        {props.row.original.address || '-'}
+                    <span className="font-mono text-gray-600">
+                        {props.row.original.directorPinfl || '-'}
+                    </span>
+                ),
+            },
+            {
+                header: 'Direktor ID',
+                accessorKey: 'directorId',
+                cell: (props) => (
+                    <span className="font-mono text-gray-600">
+                        {props.row.original.directorId || '-'}
+                    </span>
+                ),
+            },
+            {
+                header: 'Direktor F.I.SH',
+                accessorKey: 'directorName',
+                cell: (props) => (
+                    <div
+                        className="max-w-[220px] truncate"
+                        title={props.row.original.directorName}
+                    >
+                        {props.row.original.directorName || '-'}
                     </div>
                 ),
             },
@@ -78,104 +305,142 @@ const AdminOrganizations = () => {
                 header: 'Holat',
                 accessorKey: 'status',
                 cell: (props) => {
-                    const status = props.row.original.status || 'Active'
+                    const status = props.row.original.status || '-'
+                    const statusClass =
+                        status === 'Active'
+                            ? 'bg-green-100 text-green-700'
+                            : status === ACTIVE_WITH_TAX_STATUS
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-700'
+
                     return (
-                        <span className={`px-2.5 py-1 text-xs font-medium rounded-full ${status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
-                            {status}
+                        <span
+                            className={`inline-flex max-w-[260px] rounded-full px-2.5 py-1 text-xs font-medium ${statusClass}`}
+                            title={status}
+                        >
+                            <span className="truncate">{status}</span>
                         </span>
                     )
                 },
             },
-            // {
-            //     header: 'Amallar',
-            //     id: 'action',
-            //     cell: (props) => (
-            //         <button 
-            //             onClick={() => setEditModal(props.row.original)}
-            //             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-            //             title="Редактировать"
-            //         >
-            //             <HiOutlinePencil className="text-lg" />
-            //         </button>
-            //     ),
-            // },
+            {
+                header: 'Manzil',
+                accessorKey: 'address',
+                cell: (props) => (
+                    <div
+                        className="max-w-[260px] truncate"
+                        title={props.row.original.address}
+                    >
+                        {props.row.original.address || '-'}
+                    </div>
+                ),
+            },
+            {
+                header: 'Filiallar',
+                id: 'branches',
+                cell: (props) => (
+                    <button
+                        className="rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition hover:bg-blue-100"
+                        onClick={() =>
+                            navigate(
+                                `/admin/branches?organizationId=${props.row.original.id}`,
+                            )
+                        }
+                    >
+                        Filialarni ko&apos;rish
+                    </button>
+                ),
+            },
         ],
-        []
+        [navigate],
     )
 
     return (
-        <>
-            <AdaptiveCard className="h-full" bodyClass="h-full">
-                <div className="flex items-center justify-between mb-4">
+        <div className="relative flex h-full flex-col gap-4 p-5">
+            <AdaptiveCard>
+                <div className="flex flex-col gap-4">
                     <div>
-                        <h3 className="mb-1">Barcha tashkilotlar</h3>
-                        <p className="text-sm text-gray-500">Ro'yxatdan o'tgan tashkilotlar ro'yxati (Tashkilotlar)</p>
+                        <h3 className="mb-1 text-xl font-bold text-gray-800">
+                            Barcha tashkilotlar
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                            Search term va status bo&apos;yicha tashkilotlarni
+                            filtrlash
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px_auto]">
+                        <div>
+                            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                                Search term
+                            </label>
+                            <Input
+                                size="sm"
+                                placeholder="Nomi yoki INN bo'yicha qidiring..."
+                                value={searchTerm}
+                                onChange={(event) => {
+                                    setSearchTerm(event.target.value)
+                                    setTableData((prev) => ({
+                                        ...prev,
+                                        pageIndex: 1,
+                                    }))
+                                }}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                                Status
+                            </label>
+                            <Select<StatusOption, false>
+                                isClearable
+                                size="sm"
+                                placeholder="Status tanlang"
+                                options={statusOptions}
+                                value={
+                                    statusOptions.find(
+                                        (option) =>
+                                            option.value === statusFilter,
+                                    ) || null
+                                }
+                                isSearchable={false}
+                                onChange={(option) => {
+                                    setStatusFilter(option?.value || '')
+                                    setTableData((prev) => ({
+                                        ...prev,
+                                        pageIndex: 1,
+                                    }))
+                                }}
+                            />
+                        </div>
+
+                        <div className="flex items-end">
+                            <button
+                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 lg:w-auto"
+                                onClick={fetchData}
+                            >
+                                <HiOutlineRefresh
+                                    className={loading ? 'animate-spin' : ''}
+                                />
+                                Yangilash
+                            </button>
+                        </div>
                     </div>
                 </div>
+            </AdaptiveCard>
+
+            <AdaptiveCard className="flex-1" bodyClass="h-full">
                 <DataTable
                     columns={columns}
                     data={data}
                     loading={loading}
-                    pagingData={{
-                        total: data.length,
-                        pageIndex: 1,
-                        pageSize: data.length > 0 ? data.length : 10,
-                    }}
+                    noData={!loading && data.length === 0}
+                    pagingData={tableData}
+                    onPaginationChange={onPaginationChange}
+                    onSelectChange={onSelectChange}
                 />
             </AdaptiveCard>
-
-            {/* Модальное окно редактирования */}
-            {editModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h3 className="text-lg font-semibold text-gray-800">Tashkilotni tahrirlash</h3>
-                            <button onClick={() => setEditModal(null)} className="text-gray-400 hover:text-gray-600">
-                                <HiOutlineX className="text-xl" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleSave} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Qisqa ismi</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.shortName || ''} 
-                                    onChange={e => setEditModal({...editModal, shortName: e.target.value})} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">To'liq ismi</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.fullName || ''} 
-                                    onChange={e => setEditModal({...editModal, fullName: e.target.value})} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">INN</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.inn || ''} 
-                                    onChange={e => setEditModal({...editModal, inn: e.target.value})} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Manzil</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.address || ''} 
-                                    onChange={e => setEditModal({...editModal, address: e.target.value})} 
-                                />
-                            </div>
-                            <div className="flex justify-end pt-4 space-x-3">
-                                <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Bekor qilish</button>
-                                <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition">Saqlash</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </>
+        </div>
     )
 }
 

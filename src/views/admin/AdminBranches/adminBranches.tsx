@@ -1,56 +1,238 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import AdaptiveCard from '@/components/shared/AdaptiveCard'
 import DataTable from '@/components/shared/DataTable'
-import { apiGetAdminBranches, apiPutAdminBranch } from '@/services/AdminBranchService'
+import Input from '@/components/ui/Input'
+import Select from '@/components/ui/Select'
+import { apiGetAdminBranches } from '@/services/AdminBranchService'
+import { apiGetAdminOrganizations } from '@/services/AdminOrganizationService'
 import type { ColumnDef } from '@tanstack/react-table'
-import { HiOutlinePencil, HiOutlineX } from 'react-icons/hi'
+import { useSearchParams } from 'react-router-dom'
+import { HiOutlineRefresh } from 'react-icons/hi'
+
+type AdminBranch = {
+    id: number
+    name?: string
+    code?: string
+    address?: string
+    directorPinfl?: string
+    organizationId?: number | null
+}
+
+type AdminOrganizationOption = {
+    id: number
+    fullName?: string
+}
+
+type BranchListPayload = {
+    items?: AdminBranch[]
+    totalCount?: number
+}
+
+type BranchListResponse = {
+    data?: BranchListPayload | AdminBranch[]
+    items?: AdminBranch[]
+    totalCount?: number
+}
+
+type OrganizationListPayload = {
+    items?: AdminOrganizationOption[]
+    totalCount?: number
+}
+
+type OrganizationListResponse = {
+    data?: OrganizationListPayload | AdminOrganizationOption[]
+    items?: AdminOrganizationOption[]
+    totalCount?: number
+}
+
+type OrganizationSelectOption = {
+    value: number
+    label: string
+}
+
+const getBranchItems = (response: BranchListResponse): AdminBranch[] => {
+    if (Array.isArray(response?.data)) {
+        return response.data
+    }
+
+    return response?.data?.items || response?.items || []
+}
+
+const getBranchTotal = (response: BranchListResponse, fallbackLength: number) => {
+    if (Array.isArray(response?.data)) {
+        return response.data.length
+    }
+
+    return (
+        response?.data?.totalCount ||
+        response?.totalCount ||
+        response?.items?.length ||
+        fallbackLength
+    )
+}
+
+const getOrganizationItems = (
+    response: OrganizationListResponse,
+): AdminOrganizationOption[] => {
+    if (Array.isArray(response?.data)) {
+        return response.data
+    }
+
+    return response?.data?.items || response?.items || []
+}
+
+const parseOrganizationId = (value: string | null) => {
+    if (!value) {
+        return null
+    }
+
+    const parsed = Number(value)
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null
+}
 
 const AdminBranches = () => {
-    const [data, setData] = useState<any[]>([])
+    const [searchParams, setSearchParams] = useSearchParams()
+    const [data, setData] = useState<AdminBranch[]>([])
     const [loading, setLoading] = useState(false)
-    const [editModal, setEditModal] = useState<any | null>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [organizationOptions, setOrganizationOptions] = useState<
+        OrganizationSelectOption[]
+    >([])
+    const [organizationOptionsLoading, setOrganizationOptionsLoading] =
+        useState(false)
+    const [organizationIdFilter, setOrganizationIdFilter] = useState<
+        number | null
+    >(() => parseOrganizationId(searchParams.get('organizationId')))
+    const [tableData, setTableData] = useState({
+        pageIndex: 1,
+        pageSize: 10,
+        total: 0,
+    })
 
     useEffect(() => {
-        fetchData()
+        const urlOrganizationId = parseOrganizationId(
+            searchParams.get('organizationId'),
+        )
+
+        setOrganizationIdFilter((prev) =>
+            prev === urlOrganizationId ? prev : urlOrganizationId,
+        )
+    }, [searchParams])
+
+    const fetchOrganizations = useCallback(async () => {
+        setOrganizationOptionsLoading(true)
+        try {
+            const response =
+                await apiGetAdminOrganizations<
+                    OrganizationListResponse,
+                    Record<string, number>
+                >({
+                    PageSize: 1000,
+                    PageIndex: 1,
+                })
+
+            const items = getOrganizationItems(response)
+            setOrganizationOptions(
+                items
+                    .filter((item) => item.id > 0)
+                    .map((item) => ({
+                        value: item.id,
+                        label: item.fullName || `Tashkilot #${item.id}`,
+                    })),
+            )
+        } catch (error) {
+            console.error('Tashkilotlar ro‘yxatini yuklashda xatolik', error)
+            setOrganizationOptions([])
+        } finally {
+            setOrganizationOptionsLoading(false)
+        }
     }, [])
 
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true)
         try {
-            const response: any = await apiGetAdminBranches({ PageSize: 50, PageIndex: 1 })
-            setData(response?.data?.items || response?.items || response?.data || [])
+            const params: Record<string, string | number> = {
+                PageSize: tableData.pageSize,
+                PageIndex: tableData.pageIndex,
+            }
+
+            const trimmedSearchTerm = searchTerm.trim()
+            if (trimmedSearchTerm) {
+                params.SearchTerm = trimmedSearchTerm
+            }
+
+            if (organizationIdFilter) {
+                params.OrganizationId = organizationIdFilter
+            }
+
+            const response =
+                await apiGetAdminBranches<
+                    BranchListResponse,
+                    Record<string, string | number>
+                >(params)
+
+            const items = getBranchItems(response)
+            setData(items)
+            setTableData((prev) => ({
+                ...prev,
+                total: getBranchTotal(response, items.length),
+            }))
         } catch (error) {
-            console.error('Ошибка при загрузке филиалов', error)
+            console.error('Filiallarni yuklashda xatolik', error)
+            setData([])
+            setTableData((prev) => ({
+                ...prev,
+                total: 0,
+            }))
         } finally {
             setLoading(false)
         }
+    }, [organizationIdFilter, searchTerm, tableData.pageIndex, tableData.pageSize])
+
+    useEffect(() => {
+        fetchOrganizations()
+    }, [fetchOrganizations])
+
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            fetchData()
+        }, 350)
+
+        return () => window.clearTimeout(timeoutId)
+    }, [fetchData])
+
+    const onPaginationChange = (page: number) => {
+        setTableData((prev) => ({
+            ...prev,
+            pageIndex: page,
+        }))
     }
 
-    const handleSave = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!editModal) return
-        try {
-            await apiPutAdminBranch(editModal.id, editModal)
-            setEditModal(null)
-            fetchData() // Обновляем таблицу после сохранения
-        } catch (error) {
-            console.error('Ошибка при сохранении', error)
-            alert('Ошибка при сохранении данных филиала')
-        }
+    const onSelectChange = (value: number) => {
+        setTableData((prev) => ({
+            ...prev,
+            pageIndex: 1,
+            pageSize: value,
+        }))
     }
 
-    const columns = useMemo<ColumnDef<any>[]>(
+    const columns = useMemo<ColumnDef<AdminBranch>[]>(
         () => [
             {
                 header: 'ID',
                 accessorKey: 'id',
-                cell: (props) => <span className="text-gray-500">#{props.row.original.id}</span>,
+                cell: (props) => (
+                    <span className="text-gray-500">#{props.row.original.id}</span>
+                ),
             },
             {
                 header: 'Nomi',
                 accessorKey: 'name',
                 cell: (props) => (
-                    <div className="max-w-[250px] truncate font-medium" title={props.row.original.name}>
+                    <div
+                        className="max-w-[260px] truncate font-medium"
+                        title={props.row.original.name}
+                    >
                         {props.row.original.name || '-'}
                     </div>
                 ),
@@ -58,13 +240,29 @@ const AdminBranches = () => {
             {
                 header: 'Kod',
                 accessorKey: 'code',
-                cell: (props) => <span className="bg-gray-100 px-2 py-1 rounded font-mono text-xs">{props.row.original.code || '-'}</span>,
+                cell: (props) => (
+                    <span className="rounded bg-gray-100 px-2 py-1 font-mono text-xs">
+                        {props.row.original.code || '-'}
+                    </span>
+                ),
+            },
+            {
+                header: 'Organization ID',
+                accessorKey: 'organizationId',
+                cell: (props) => (
+                    <span className="font-mono text-gray-600">
+                        {props.row.original.organizationId || '-'}
+                    </span>
+                ),
             },
             {
                 header: 'Manzil',
                 accessorKey: 'address',
                 cell: (props) => (
-                    <div className="max-w-[250px] truncate" title={props.row.original.address}>
+                    <div
+                        className="max-w-[260px] truncate"
+                        title={props.row.original.address}
+                    >
                         {props.row.original.address || '-'}
                     </div>
                 ),
@@ -72,100 +270,120 @@ const AdminBranches = () => {
             {
                 header: 'Direktor PINFL',
                 accessorKey: 'directorPinfl',
-                cell: (props) => <span className="font-mono text-gray-600">{props.row.original.directorPinfl || '-'}</span>,
+                cell: (props) => (
+                    <span className="font-mono text-gray-600">
+                        {props.row.original.directorPinfl || '-'}
+                    </span>
+                ),
             },
-            // {
-            //     header: 'Amallar',
-            //     id: 'action',
-            //     cell: (props) => (
-            //         <button 
-            //             onClick={() => setEditModal(props.row.original)}
-            //             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-            //             title="Редактировать"
-            //         >
-            //             <HiOutlinePencil className="text-lg" />
-            //         </button>
-            //     ),
-            // },
         ],
-        []
+        [],
     )
 
+    const selectedOrganizationOption =
+        organizationOptions.find(
+            (option) => option.value === organizationIdFilter,
+        ) || null
+
     return (
-        <>
-            <AdaptiveCard className="h-full" bodyClass="h-full">
-                <div className="flex items-center justify-between mb-4">
+        <div className="relative flex h-full flex-col gap-4 p-5">
+            <AdaptiveCard>
+                <div className="flex flex-col gap-4">
                     <div>
-                        <h3 className="mb-1">Barcha filiallar</h3>
-                        <p className="text-sm text-gray-500">Tashkilotlar filiallarini boshqish</p>
+                        <h3 className="mb-1 text-xl font-bold text-gray-800">
+                            Barcha filiallar
+                        </h3>
+                        <p className="text-sm text-gray-500">
+                            Search term va organization bo&apos;yicha filiallarni
+                            filtrlash
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px_auto]">
+                        <div>
+                            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                                Search term
+                            </label>
+                            <Input
+                                size="sm"
+                                placeholder="Filial nomi yoki kod bo'yicha qidiring..."
+                                value={searchTerm}
+                                onChange={(event) => {
+                                    setSearchTerm(event.target.value)
+                                    setTableData((prev) => ({
+                                        ...prev,
+                                        pageIndex: 1,
+                                    }))
+                                }}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-wider text-gray-400">
+                                Organization
+                            </label>
+                            <Select<OrganizationSelectOption, false>
+                                isClearable
+                                isSearchable
+                                size="sm"
+                                placeholder="Tashkilotni tanlang"
+                                options={organizationOptions}
+                                value={selectedOrganizationOption}
+                                isLoading={organizationOptionsLoading}
+                                onChange={(option) => {
+                                    const nextOrganizationId = option?.value || null
+
+                                    setOrganizationIdFilter(nextOrganizationId)
+                                    setTableData((prev) => ({
+                                        ...prev,
+                                        pageIndex: 1,
+                                    }))
+
+                                    const nextParams = new URLSearchParams(
+                                        searchParams,
+                                    )
+
+                                    if (nextOrganizationId) {
+                                        nextParams.set(
+                                            'organizationId',
+                                            String(nextOrganizationId),
+                                        )
+                                    } else {
+                                        nextParams.delete('organizationId')
+                                    }
+
+                                    setSearchParams(nextParams)
+                                }}
+                            />
+                        </div>
+
+                        <div className="flex items-end">
+                            <button
+                                className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 transition hover:bg-gray-50 lg:w-auto"
+                                onClick={fetchData}
+                            >
+                                <HiOutlineRefresh
+                                    className={loading ? 'animate-spin' : ''}
+                                />
+                                Yangilash
+                            </button>
+                        </div>
                     </div>
                 </div>
+            </AdaptiveCard>
+
+            <AdaptiveCard className="flex-1" bodyClass="h-full">
                 <DataTable
                     columns={columns}
                     data={data}
                     loading={loading}
-                    pagingData={{
-                        total: data.length,
-                        pageIndex: 1,
-                        pageSize: data.length > 0 ? data.length : 10,
-                    }}
+                    noData={!loading && data.length === 0}
+                    pagingData={tableData}
+                    onPaginationChange={onPaginationChange}
+                    onSelectChange={onSelectChange}
                 />
             </AdaptiveCard>
-
-            {/* Модальное окно редактирования */}
-            {editModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4">
-                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95">
-                        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                            <h3 className="text-lg font-semibold text-gray-800">Filialni tahrirlash</h3>
-                            <button onClick={() => setEditModal(null)} className="text-gray-400 hover:text-gray-600">
-                                <HiOutlineX className="text-xl" />
-                            </button>
-                        </div>
-                        <form onSubmit={handleSave} className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Nomi</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.name || ''} 
-                                    onChange={e => setEditModal({...editModal, name: e.target.value})} 
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Kod</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.code || ''} 
-                                    onChange={e => setEditModal({...editModal, code: e.target.value})} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Manzil</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.address || ''} 
-                                    onChange={e => setEditModal({...editModal, address: e.target.value})} 
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Direktor PINFL</label>
-                                <input 
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                    value={editModal.directorPinfl || ''} 
-                                    onChange={e => setEditModal({...editModal, directorPinfl: e.target.value})} 
-                                    maxLength={14}
-                                />
-                            </div>
-                            <div className="flex justify-end pt-4 space-x-3">
-                                <button type="button" onClick={() => setEditModal(null)} className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Bekor qilish</button>
-                                <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition">Saqlash</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </>
+        </div>
     )
 }
 
