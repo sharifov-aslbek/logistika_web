@@ -21,7 +21,9 @@ import RegistryResultModal from './components/create-registry/RegistryResultModa
 import {
     type Option,
     type RegistryApiResult,
+    buildValidationDownloadRows,
     createRegistryErrorResult,
+    downloadValidationRowsExcel,
     getInternalRequiredHeaders,
     getExternalRequiredHeaders,
     isExcelFile,
@@ -58,9 +60,6 @@ const CreateRegistry = () => {
     const submitRegistryProcess = useRegistryProcessStore(
         (state) => state.submitRegistryProcess,
     )
-    const showPendingBackgroundNotifications = useRegistryProcessStore(
-        (state) => state.showPendingBackgroundNotifications,
-    )
     const role = Number(userProfile?.role || 0)
     const isAdminRole = role === ROLE_ADMIN
     const isWorkerRole = role === ROLE_WORKER
@@ -73,6 +72,8 @@ const CreateRegistry = () => {
     const [internalValidationErrors, setInternalValidationErrors] = useState<
         string[]
     >([])
+    const [internalValidationDownloadRows, setInternalValidationDownloadRows] =
+        useState<Record<string, string>[]>([])
     const [internalUploadedFiles, setInternalUploadedFiles] = useState<File[]>(
         [],
     )
@@ -81,6 +82,8 @@ const CreateRegistry = () => {
     const [externalValidationErrors, setExternalValidationErrors] = useState<
         string[]
     >([])
+    const [externalValidationDownloadRows, setExternalValidationDownloadRows] =
+        useState<Record<string, string>[]>([])
     const [externalUploadedFiles, setExternalUploadedFiles] = useState<File[]>(
         [],
     )
@@ -97,10 +100,9 @@ const CreateRegistry = () => {
         isMountedRef.current = true
 
         return () => {
-            void showPendingBackgroundNotifications()
             isMountedRef.current = false
         }
-    }, [showPendingBackgroundNotifications])
+    }, [])
 
     useEffect(() => {
         if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
@@ -177,6 +179,13 @@ const CreateRegistry = () => {
 
             if (result.error) {
                 setInternalValidationErrors([result.error])
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
@@ -186,6 +195,7 @@ const CreateRegistry = () => {
                 setInternalValidationErrors([
                     "Excel faylda o'qiladigan ma'lumot topilmadi",
                 ])
+                setInternalValidationDownloadRows([])
                 return
             }
 
@@ -193,16 +203,30 @@ const CreateRegistry = () => {
                 setInternalValidationErrors([
                     'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
-            const errors = validateInternalExcelData(normalizedData)
+            const validationResult = validateInternalExcelData(result.parsedRows)
 
-            if (errors.length > 0) {
-                setInternalValidationErrors(errors)
+            if (validationResult.errors.length > 0) {
+                setInternalValidationErrors(validationResult.errors)
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        validationResult.issues,
+                    ),
+                )
                 return
             }
 
+            setInternalValidationDownloadRows([])
             setInternalExcelData(normalizedData)
         }
 
@@ -233,6 +257,13 @@ const CreateRegistry = () => {
 
             if (result.error) {
                 setExternalValidationErrors([result.error])
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
@@ -242,6 +273,7 @@ const CreateRegistry = () => {
                 setExternalValidationErrors([
                     "Excel faylda o'qiladigan ma'lumot topilmadi",
                 ])
+                setExternalValidationDownloadRows([])
                 return
             }
 
@@ -249,16 +281,31 @@ const CreateRegistry = () => {
                 setExternalValidationErrors([
                     'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
-            const errors = validateExternalExcelData(normalizedData)
+            const validationResult = validateExternalExcelData(result.parsedRows)
 
-            if (errors.length > 0) {
-                setExternalValidationErrors(errors)
+            if (validationResult.errors.length > 0) {
+                setExternalValidationErrors(validationResult.errors)
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        validationResult.issues,
+                        validationResult.issues.length === 0,
+                    ),
+                )
                 return
             }
 
+            setExternalValidationDownloadRows([])
             setExternalExcelData(normalizedData)
         }
 
@@ -267,6 +314,7 @@ const CreateRegistry = () => {
 
     const handleInternalFileUpload = (files: File[], form: any) => {
         setInternalValidationErrors([])
+        setInternalValidationDownloadRows([])
         setInternalExcelData([])
 
         if (!files || files.length === 0) return
@@ -286,6 +334,7 @@ const CreateRegistry = () => {
 
     const handleExternalFileUpload = (files: File[], form: any) => {
         setExternalValidationErrors([])
+        setExternalValidationDownloadRows([])
         setExternalExcelData([])
 
         if (!files || files.length === 0) return
@@ -307,6 +356,7 @@ const CreateRegistry = () => {
         setInternalUploadedFiles([])
         setInternalExcelData([])
         setInternalValidationErrors([])
+        setInternalValidationDownloadRows([])
         form.setFieldValue('file', null)
     }
 
@@ -314,7 +364,32 @@ const CreateRegistry = () => {
         setExternalUploadedFiles([])
         setExternalExcelData([])
         setExternalValidationErrors([])
+        setExternalValidationDownloadRows([])
         form.setFieldValue('file', null)
+    }
+
+    const createValidationExportFileName = (type: 'internal' | 'external') => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+
+        return `registry_validation_errors_${type}_${timestamp}.xlsx`
+    }
+
+    const handleValidationRowsDownload = (
+        rows: Record<string, string>[],
+        type: 'internal' | 'external',
+    ) => {
+        const downloaded = downloadValidationRowsExcel(
+            rows,
+            createValidationExportFileName(type),
+        )
+
+        toast.push(
+            <Notification type={downloaded ? 'success' : 'warning'}>
+                {downloaded
+                    ? 'Xato qatorlar Excel faylga yuklab olindi'
+                    : 'Yuklab olish uchun xato qatorlar topilmadi'}
+            </Notification>,
+        )
     }
 
     const handleInternalSubmit = async (values: any) => {
@@ -559,8 +634,17 @@ const CreateRegistry = () => {
                                         validationErrors={
                                             internalValidationErrors
                                         }
+                                        validationErrorRowsCount={
+                                            internalValidationDownloadRows.length
+                                        }
                                         validateRegistryFile={
                                             validateRegistryFile
+                                        }
+                                        onValidationErrorsDownload={() =>
+                                            handleValidationRowsDownload(
+                                                internalValidationDownloadRows,
+                                                'internal',
+                                            )
                                         }
                                         onFileChange={(files) =>
                                             handleInternalFileUpload(
@@ -619,8 +703,17 @@ const CreateRegistry = () => {
                                         validationErrors={
                                             externalValidationErrors
                                         }
+                                        validationErrorRowsCount={
+                                            externalValidationDownloadRows.length
+                                        }
                                         validateRegistryFile={
                                             validateRegistryFile
+                                        }
+                                        onValidationErrorsDownload={() =>
+                                            handleValidationRowsDownload(
+                                                externalValidationDownloadRows,
+                                                'external',
+                                            )
                                         }
                                         onFileChange={(files) =>
                                             handleExternalFileUpload(
