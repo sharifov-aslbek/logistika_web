@@ -1,13 +1,22 @@
 import Button from '@/components/ui/Button'
+import { HiOutlineDownload } from 'react-icons/hi'
 import type { RegistryApiResult } from './createRegistry.utils'
 
 type Props = {
     isOpen: boolean
     apiResult: RegistryApiResult | null
+    failedRowsCount?: number
+    onFailedRowsDownload?: () => void
     onClose: () => void
 }
 
-const RegistryResultModal = ({ isOpen, apiResult, onClose }: Props) => {
+const RegistryResultModal = ({
+    isOpen,
+    apiResult,
+    failedRowsCount = 0,
+    onFailedRowsDownload,
+    onClose,
+}: Props) => {
     if (!isOpen || !apiResult) {
         return null
     }
@@ -74,6 +83,20 @@ const RegistryResultModal = ({ isOpen, apiResult, onClose }: Props) => {
                                     <li key={index}>{message}</li>
                                 ))}
                             </ul>
+
+                            {onFailedRowsDownload && failedRowsCount > 0 && (
+                                <div className="mt-4">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        icon={<HiOutlineDownload />}
+                                        onClick={onFailedRowsDownload}
+                                    >
+                                        Fail bo'lgan qatorlarni yuklab olish (
+                                        {failedRowsCount})
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

@@ -113,11 +113,20 @@ const pushSuccessNotification = async (
     type: RegistryProcessType,
     result: RegistryApiResult,
 ) => {
+    const hasErrors = result.errorCount > 0
+    const isAllFailed = hasErrors && result.successCount === 0
+
     return resolveToastId(
         toast.push(
             <Notification
-                title={`${getJobTitle(type)} yakunlandi`}
-                type="success"
+                title={
+                    isAllFailed
+                        ? `${getJobTitle(type)} xatolik bilan tugadi`
+                        : hasErrors
+                          ? `${getJobTitle(type)} qisman yakunlandi`
+                          : `${getJobTitle(type)} yakunlandi`
+                }
+                type={isAllFailed ? 'danger' : hasErrors ? 'warning' : 'success'}
                 closable
                 duration={0}
             >

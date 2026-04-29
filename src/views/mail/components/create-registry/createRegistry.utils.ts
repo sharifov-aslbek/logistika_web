@@ -50,6 +50,7 @@ export type RegistryValidationResult = {
 }
 
 const EXCEL_DATE_OUTPUT_FORMAT = 'dd/mm/yyyy'
+const EXTERNAL_ERROR_IDENTIFIER_REGEX = /\b(?:\d{14}|\d{9})\b/g
 
 const HEADER_ALIASES: Record<string, string> = {
     receiver: 'receiver',
@@ -289,6 +290,127 @@ export const readSheetWithHeaders = (
     }
 }
 
+const normalizeTextForLookup = (value: unknown) => {
+    return String(value ?? '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
+const extractQuotedValues = (message: string) => {
+    const matches = message.match(/"([^"]+)"|'([^']+)'/g) || []
+
+    return matches.map((match) => normalizeTextForLookup(match.slice(1, -1)))
+}
+
+const buildDownloadRowsFromParsedRows = (
+    parsedRows: RegistryParsedRow[],
+    rowNumbers: Set<number>,
+) => {
+    return parsedRows
+        .filter((row) => rowNumbers.has(row.rowNumber))
+        .map((row) => ({
+            ...row.originalRow,
+        }))
+}
+
+const buildExternalFailedRowNumbers = (
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    const failedIdentifiers = new Set<string>()
+
+    errorMessages.forEach((message) => {
+        const matches = message.match(EXTERNAL_ERROR_IDENTIFIER_REGEX) || []
+
+        matches.forEach((match) => {
+            failedIdentifiers.add(match)
+        })
+    })
+
+    if (failedIdentifiers.size === 0) {
+        return new Set<number>()
+    }
+
+    return parsedRows.reduce((rowNumbers, row) => {
+        const { pinfl, inn, pinflOrInn } = getNormalizedExternalIdentifiers(
+            row.normalizedRow,
+        )
+        const rowIdentifiers = [pinfl, inn, pinflOrInn].filter(Boolean)
+
+        if (
+            rowIdentifiers.some((identifier) => failedIdentifiers.has(identifier))
+        ) {
+            rowNumbers.add(row.rowNumber)
+        }
+
+        return rowNumbers
+    }, new Set<number>())
+}
+
+const buildInternalFailedRowNumbers = (
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    return errorMessages.reduce((rowNumbers, message) => {
+        const normalizedMessage = normalizeTextForLookup(message)
+        const quotedValues = new Set(extractQuotedValues(message))
+
+        const matchesBoth = parsedRows.filter((row) => {
+            const receiver = normalizeTextForLookup(row.normalizedRow.receiver)
+            const address = normalizeTextForLookup(row.normalizedRow.address)
+
+            if (!receiver || !address) {
+                return false
+            }
+
+            return (
+                (quotedValues.has(receiver) && quotedValues.has(address)) ||
+                (normalizedMessage.includes(receiver) &&
+                    normalizedMessage.includes(address))
+            )
+        })
+
+        if (matchesBoth.length > 0) {
+            matchesBoth.forEach((row) => rowNumbers.add(row.rowNumber))
+            return rowNumbers
+        }
+
+        const receiverMatches = parsedRows.filter((row) => {
+            const receiver = normalizeTextForLookup(row.normalizedRow.receiver)
+
+            if (!receiver) {
+                return false
+            }
+
+            return (
+                quotedValues.has(receiver) || normalizedMessage.includes(receiver)
+            )
+        })
+
+        if (receiverMatches.length === 1) {
+            rowNumbers.add(receiverMatches[0].rowNumber)
+            return rowNumbers
+        }
+
+        const addressMatches = parsedRows.filter((row) => {
+            const address = normalizeTextForLookup(row.normalizedRow.address)
+
+            if (!address) {
+                return false
+            }
+
+            return quotedValues.has(address) || normalizedMessage.includes(address)
+        })
+
+        if (addressMatches.length === 1) {
+            rowNumbers.add(addressMatches[0].rowNumber)
+        }
+
+        return rowNumbers
+    }, new Set<number>())
+}
+
 export const isExcelFile = (file: File) => {
     const fileName = file.name.toLowerCase()
 
@@ -460,6 +582,23 @@ export const buildValidationDownloadRows = (
         .map((row) => ({
             ...row.rowObject,
         }))
+}
+
+export const buildApiFailedDownloadRows = (
+    type: 'internal' | 'external',
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    if (parsedRows.length === 0 || errorMessages.length === 0) {
+        return [] as Record<string, string>[]
+    }
+
+    const failedRowNumbers =
+        type === 'external'
+            ? buildExternalFailedRowNumbers(parsedRows, errorMessages)
+            : buildInternalFailedRowNumbers(parsedRows, errorMessages)
+
+    return buildDownloadRowsFromParsedRows(parsedRows, failedRowNumbers)
 }
 
 export const downloadValidationRowsExcel = (
