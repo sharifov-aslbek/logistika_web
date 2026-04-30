@@ -27,48 +27,54 @@ type Message = {
 const useMessages = (msgKey: string) => {
     const [messages, setMessages] = useState<Message[]>([])
 
-    const getKey = useCallback(
-        (key: string) => {
-            if (typeof key === 'undefined' && messages.length) {
-                key = messages[messages.length - 1].key
-            }
-            return key
-        },
-        [messages],
-    )
-
     const push = useCallback(
         (message: NodeProps) => {
             const key = msgKey || '_' + Math.random().toString(36).substr(2, 12)
-            setMessages([...messages, { key, visible: true, node: message }])
+            setMessages((prevMessages) => [
+                ...prevMessages,
+                { key, visible: true, node: message },
+            ])
             return key
         },
-        [messages, msgKey],
+        [msgKey],
     )
 
     const removeAll = useCallback(() => {
-        setMessages(messages.map((msg) => ({ ...msg, visible: false })))
+        setMessages((prevMessages) =>
+            prevMessages.map((msg) => ({ ...msg, visible: false })),
+        )
         setTimeout(() => {
-            setMessages([])
+            setMessages((prevMessages) =>
+                prevMessages.filter((msg) => msg.visible),
+            )
         }, 50)
-    }, [messages])
+    }, [])
 
     const remove = useCallback(
         (key: string) => {
-            setMessages(
-                messages.map((elm) => {
-                    if (elm.key === getKey(key)) {
-                        elm.visible = false
-                    }
-                    return elm
-                }),
-            )
+            setMessages((prevMessages) => {
+                const resolvedKey =
+                    typeof key === 'undefined' && prevMessages.length > 0
+                        ? prevMessages[prevMessages.length - 1].key
+                        : key
+
+                return prevMessages.map((message) =>
+                    message.key === resolvedKey
+                        ? {
+                              ...message,
+                              visible: false,
+                          }
+                        : message,
+                )
+            })
 
             setTimeout(() => {
-                setMessages(messages.filter((msg) => msg.visible))
+                setMessages((prevMessages) =>
+                    prevMessages.filter((msg) => msg.visible),
+                )
             }, 50)
         },
-        [messages, getKey],
+        [],
     )
 
     return { messages, push, removeAll, remove }

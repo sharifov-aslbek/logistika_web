@@ -20,7 +20,37 @@ export type RegistryApiResult = {
     errorMessages: string[]
 }
 
+export type RegistryOriginalRow = {
+    rowNumber: number
+    rowObject: Record<string, string>
+}
+
+export type RegistryParsedRow = {
+    rowNumber: number
+    originalRow: Record<string, string>
+    normalizedRow: Record<string, any>
+}
+
+export type RegistrySheetReadResult = {
+    error: string | null
+    data: Record<string, any>[]
+    parsedRows: RegistryParsedRow[]
+    originalRows: RegistryOriginalRow[]
+    missingHeaders: string[]
+}
+
+export type RegistryValidationIssue = {
+    rowNumber: number
+    message: string
+}
+
+export type RegistryValidationResult = {
+    errors: string[]
+    issues: RegistryValidationIssue[]
+}
+
 const EXCEL_DATE_OUTPUT_FORMAT = 'dd/mm/yyyy'
+const EXTERNAL_ERROR_IDENTIFIER_REGEX = /\b(?:\d{14}|\d{9})\b/g
 
 const HEADER_ALIASES: Record<string, string> = {
     receiver: 'receiver',
@@ -142,6 +172,12 @@ const getWorksheetCellDisplayValue = (cell?: XLSX.CellObject) => {
     return String(cell.v)
 }
 
+const getExportHeaderName = (header: string, index: number) => {
+    const trimmedHeader = String(header || '').trim()
+
+    return trimmedHeader || `column_${index + 1}`
+}
+
 const readWorksheetRows = (worksheet: XLSX.WorkSheet) => {
     const ref = worksheet['!ref']
 
@@ -177,20 +213,59 @@ const readWorksheetRows = (worksheet: XLSX.WorkSheet) => {
 export const readSheetWithHeaders = (
     worksheet: XLSX.WorkSheet,
     requiredHeaders: string[],
-) => {
+): RegistrySheetReadResult => {
     const rows = readWorksheetRows(worksheet)
 
     if (!rows || rows.length < 3) {
         return {
             error: "Excel faylda kamida 3 qator bo'lishi kerak: 1-qator keylar, 2-qator label, 3-qator data.",
             data: [],
+            parsedRows: [],
+            originalRows: [],
+            missingHeaders: [],
         }
     }
 
     const headerRow = rows[0] || []
+    const exportHeaders = headerRow.map((cell, index) =>
+        getExportHeaderName(String(cell || ''), index),
+    )
     const normalizedHeaders = headerRow.map((cell) =>
         normalizeHeaderKey(String(cell || '')),
     )
+    const dataRows = rows.slice(2)
+    const originalRows = dataRows
+        .map((row, index) => {
+            const rowObject: Record<string, string> = {}
+
+            exportHeaders.forEach((header, columnIndex) => {
+                rowObject[header] = row?.[columnIndex] ?? ''
+            })
+
+            return {
+                rowNumber: index + 3,
+                rowObject,
+            }
+        })
+        .filter((row) =>
+            Object.values(row.rowObject).some((value) => isMeaningfulValue(value)),
+        )
+    const parsedRows = originalRows.map((row) => {
+        const normalizedRow: Record<string, any> = {}
+
+        normalizedHeaders.forEach((header, index) => {
+            if (header) {
+                normalizedRow[header] = row.rowObject[exportHeaders[index]] ?? ''
+            }
+        })
+
+        return {
+            rowNumber: row.rowNumber,
+            originalRow: row.rowObject,
+            normalizedRow,
+        }
+    })
+    const mappedData = parsedRows.map((row) => row.normalizedRow)
 
     const missingHeaders = requiredHeaders.filter(
         (header) => !normalizedHeaders.includes(header),
@@ -199,32 +274,141 @@ export const readSheetWithHeaders = (
     if (missingHeaders.length > 0) {
         return {
             error: `Excel ustunlari topilmadi. Jadvalda quyidagi ustunlar bo'lishi kerak: ${requiredHeaders.join(', ')}. Topilmaganlar: ${missingHeaders.join(', ')}`,
-            data: [],
+            data: mappedData,
+            parsedRows,
+            originalRows,
+            missingHeaders,
         }
     }
-
-    const dataRows = rows.slice(2)
-
-    const mappedData = dataRows
-        .map((row) => {
-            const obj: Record<string, any> = {}
-
-            normalizedHeaders.forEach((header, index) => {
-                if (header) {
-                    obj[header] = row?.[index] ?? ''
-                }
-            })
-
-            return obj
-        })
-        .filter((row) =>
-            Object.values(row).some((value) => isMeaningfulValue(value)),
-        )
 
     return {
         error: null,
         data: mappedData,
+        parsedRows,
+        originalRows,
+        missingHeaders: [],
     }
+}
+
+const normalizeTextForLookup = (value: unknown) => {
+    return String(value ?? '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim()
+}
+
+const extractQuotedValues = (message: string) => {
+    const matches = message.match(/"([^"]+)"|'([^']+)'/g) || []
+
+    return matches.map((match) => normalizeTextForLookup(match.slice(1, -1)))
+}
+
+const buildDownloadRowsFromParsedRows = (
+    parsedRows: RegistryParsedRow[],
+    rowNumbers: Set<number>,
+) => {
+    return parsedRows
+        .filter((row) => rowNumbers.has(row.rowNumber))
+        .map((row) => ({
+            ...row.originalRow,
+        }))
+}
+
+const buildExternalFailedRowNumbers = (
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    const failedIdentifiers = new Set<string>()
+
+    errorMessages.forEach((message) => {
+        const matches = message.match(EXTERNAL_ERROR_IDENTIFIER_REGEX) || []
+
+        matches.forEach((match) => {
+            failedIdentifiers.add(match)
+        })
+    })
+
+    if (failedIdentifiers.size === 0) {
+        return new Set<number>()
+    }
+
+    return parsedRows.reduce((rowNumbers, row) => {
+        const { pinfl, inn, pinflOrInn } = getNormalizedExternalIdentifiers(
+            row.normalizedRow,
+        )
+        const rowIdentifiers = [pinfl, inn, pinflOrInn].filter(Boolean)
+
+        if (
+            rowIdentifiers.some((identifier) => failedIdentifiers.has(identifier))
+        ) {
+            rowNumbers.add(row.rowNumber)
+        }
+
+        return rowNumbers
+    }, new Set<number>())
+}
+
+const buildInternalFailedRowNumbers = (
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    return errorMessages.reduce((rowNumbers, message) => {
+        const normalizedMessage = normalizeTextForLookup(message)
+        const quotedValues = new Set(extractQuotedValues(message))
+
+        const matchesBoth = parsedRows.filter((row) => {
+            const receiver = normalizeTextForLookup(row.normalizedRow.receiver)
+            const address = normalizeTextForLookup(row.normalizedRow.address)
+
+            if (!receiver || !address) {
+                return false
+            }
+
+            return (
+                (quotedValues.has(receiver) && quotedValues.has(address)) ||
+                (normalizedMessage.includes(receiver) &&
+                    normalizedMessage.includes(address))
+            )
+        })
+
+        if (matchesBoth.length > 0) {
+            matchesBoth.forEach((row) => rowNumbers.add(row.rowNumber))
+            return rowNumbers
+        }
+
+        const receiverMatches = parsedRows.filter((row) => {
+            const receiver = normalizeTextForLookup(row.normalizedRow.receiver)
+
+            if (!receiver) {
+                return false
+            }
+
+            return (
+                quotedValues.has(receiver) || normalizedMessage.includes(receiver)
+            )
+        })
+
+        if (receiverMatches.length === 1) {
+            rowNumbers.add(receiverMatches[0].rowNumber)
+            return rowNumbers
+        }
+
+        const addressMatches = parsedRows.filter((row) => {
+            const address = normalizeTextForLookup(row.normalizedRow.address)
+
+            if (!address) {
+                return false
+            }
+
+            return quotedValues.has(address) || normalizedMessage.includes(address)
+        })
+
+        if (addressMatches.length === 1) {
+            rowNumbers.add(addressMatches[0].rowNumber)
+        }
+
+        return rowNumbers
+    }, new Set<number>())
 }
 
 export const isExcelFile = (file: File) => {
@@ -255,62 +439,98 @@ export const validateRegistryFile = (newFiles: FileList | null) => {
     return true
 }
 
-export const validateInternalExcelData = (data: any[]) => {
+export const validateInternalExcelData = (
+    parsedRows: RegistryParsedRow[],
+): RegistryValidationResult => {
     const errors: string[] = []
+    const issues: RegistryValidationIssue[] = []
     const requiredFields = getInternalRequiredHeaders()
 
-    data.forEach((row, index) => {
-        const rowNumber = index + 3
+    const addIssue = (rowNumber: number, message: string) => {
+        errors.push(message)
+        issues.push({
+            rowNumber,
+            message,
+        })
+    }
 
-        if (!row.receiver || String(row.receiver).trim() === '') {
-            errors.push(`Qator ${rowNumber}: "receiver" ustuni bo'sh`)
-        }
-
+    parsedRows.forEach(({ rowNumber, normalizedRow }) => {
         const missingCols = requiredFields.filter((field) => {
-            return row[field] == null || String(row[field]).trim() === ''
+            return (
+                normalizedRow[field] == null ||
+                String(normalizedRow[field]).trim() === ''
+            )
         })
 
+        if (missingCols.length === 1 && missingCols[0] === 'receiver') {
+            addIssue(rowNumber, `Qator ${rowNumber}: "receiver" ustuni bo'sh`)
+            return
+        }
+
         if (missingCols.length > 0) {
-            errors.push(
+            addIssue(
+                rowNumber,
                 `Qator ${rowNumber}: To'ldirilmagan ustunlar: ${missingCols.join(', ')}`,
             )
         }
     })
 
-    return errors
+    return {
+        errors,
+        issues,
+    }
 }
 
-export const validateExternalExcelData = (data: any[]) => {
+export const validateExternalExcelData = (
+    parsedRows: RegistryParsedRow[],
+): RegistryValidationResult => {
     const errors: string[] = []
-    const hasPinflHeader = data.some((row) =>
-        Object.prototype.hasOwnProperty.call(row, 'pinfl'),
+    const issues: RegistryValidationIssue[] = []
+    const hasPinflHeader = parsedRows.some(({ normalizedRow }) =>
+        Object.prototype.hasOwnProperty.call(normalizedRow, 'pinfl'),
     )
-    const hasInnHeader = data.some((row) =>
-        Object.prototype.hasOwnProperty.call(row, 'inn'),
+    const hasInnHeader = parsedRows.some(({ normalizedRow }) =>
+        Object.prototype.hasOwnProperty.call(normalizedRow, 'inn'),
     )
-    const hasLegacyHeader = data.some((row) =>
-        Object.prototype.hasOwnProperty.call(row, 'pinfl_or_inn'),
+    const hasLegacyHeader = parsedRows.some(({ normalizedRow }) =>
+        Object.prototype.hasOwnProperty.call(normalizedRow, 'pinfl_or_inn'),
     )
 
-    if (!hasPinflHeader && !hasInnHeader && !hasLegacyHeader) {
-        return ["Excel faylda `pinfl` yoki `inn` nomli header bo'lishi kerak"]
+    const addIssue = (rowNumber: number, message: string) => {
+        errors.push(message)
+        issues.push({
+            rowNumber,
+            message,
+        })
     }
 
-    data.forEach((row, index) => {
-        const rowNumber = index + 3
+    if (!hasPinflHeader && !hasInnHeader && !hasLegacyHeader) {
+        return {
+            errors: ["Excel faylda `pinfl` yoki `inn` nomli header bo'lishi kerak"],
+            issues,
+        }
+    }
+
+    parsedRows.forEach(({ rowNumber, normalizedRow }) => {
         const { pinfl, inn, pinflOrInn, preferredKey } =
-            getNormalizedExternalIdentifiers(row)
+            getNormalizedExternalIdentifiers(normalizedRow)
 
         if (!pinflOrInn) {
-            errors.push(`Qator ${rowNumber}: "${preferredKey}" ustuni bo'sh`)
+            addIssue(rowNumber, `Qator ${rowNumber}: "${preferredKey}" ustuni bo'sh`)
         }
 
         if (preferredKey === 'pinfl' && pinfl && pinfl.length !== 14) {
-            errors.push(`Qator ${rowNumber}: "pinfl" 14 ta raqam bo'lishi kerak`)
+            addIssue(
+                rowNumber,
+                `Qator ${rowNumber}: "pinfl" 14 ta raqam bo'lishi kerak`,
+            )
         }
 
         if (preferredKey === 'inn' && inn && inn.length !== 9) {
-            errors.push(`Qator ${rowNumber}: "inn" 9 ta raqam bo'lishi kerak`)
+            addIssue(
+                rowNumber,
+                `Qator ${rowNumber}: "inn" 9 ta raqam bo'lishi kerak`,
+            )
         }
 
         if (
@@ -319,13 +539,83 @@ export const validateExternalExcelData = (data: any[]) => {
             pinflOrInn.length !== 9 &&
             pinflOrInn.length !== 14
         ) {
-            errors.push(
+            addIssue(
+                rowNumber,
                 `Qator ${rowNumber}: "pinfl_or_inn" 9 yoki 14 ta raqam bo'lishi kerak`,
             )
         }
     })
 
-    return errors
+    return {
+        errors,
+        issues,
+    }
+}
+
+export const buildValidationDownloadRows = (
+    originalRows: RegistryOriginalRow[],
+    issues: RegistryValidationIssue[],
+    includeAllRows = false,
+) => {
+    if (issues.length === 0) {
+        if (!includeAllRows || originalRows.length === 0) {
+            return [] as Record<string, string>[]
+        }
+
+        return originalRows.map((row) => ({
+            ...row.rowObject,
+        }))
+    }
+
+    const issueMap = issues.reduce(
+        (map, issue) => {
+            const currentMessages = map.get(issue.rowNumber) || []
+            currentMessages.push(issue.message)
+            map.set(issue.rowNumber, currentMessages)
+            return map
+        },
+        new Map<number, string[]>(),
+    )
+
+    return originalRows
+        .filter((row) => issueMap.has(row.rowNumber))
+        .map((row) => ({
+            ...row.rowObject,
+        }))
+}
+
+export const buildApiFailedDownloadRows = (
+    type: 'internal' | 'external',
+    parsedRows: RegistryParsedRow[],
+    errorMessages: string[],
+) => {
+    if (parsedRows.length === 0 || errorMessages.length === 0) {
+        return [] as Record<string, string>[]
+    }
+
+    const failedRowNumbers =
+        type === 'external'
+            ? buildExternalFailedRowNumbers(parsedRows, errorMessages)
+            : buildInternalFailedRowNumbers(parsedRows, errorMessages)
+
+    return buildDownloadRowsFromParsedRows(parsedRows, failedRowNumbers)
+}
+
+export const downloadValidationRowsExcel = (
+    rows: Record<string, string>[],
+    fileName: string,
+) => {
+    if (rows.length === 0) {
+        return false
+    }
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Validation Errors')
+    XLSX.writeFile(workbook, fileName)
+
+    return true
 }
 
 export const transformInternalDataToApiFormat = (

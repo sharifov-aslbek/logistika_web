@@ -3,7 +3,7 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import Upload from '@/components/ui/Upload'
 import Alert from '@/components/ui/Alert'
-import { HiOutlineCloudUpload } from 'react-icons/hi'
+import { HiOutlineCloudUpload, HiOutlineDownload } from 'react-icons/hi'
 import RegistryOrganizationBranchFields from './RegistryOrganizationBranchFields'
 import { EXCEL_ACCEPT, type Option } from './createRegistry.utils'
 
@@ -34,7 +34,9 @@ type Props = {
     uploadNote: string
     uploadedFiles: File[]
     validationErrors: string[]
+    validationErrorRowsCount?: number
     validateRegistryFile: (newFiles: FileList | null) => string | true
+    onValidationErrorsDownload?: () => void
     onFileChange: (files: File[]) => void
     onFileRemove: () => void
     onCancel: () => void
@@ -55,7 +57,9 @@ const RegistryFormSection = ({
     uploadNote,
     uploadedFiles,
     validationErrors,
+    validationErrorRowsCount = 0,
     validateRegistryFile,
+    onValidationErrorsDownload,
     onFileChange,
     onFileRemove,
     onCancel,
@@ -153,6 +157,20 @@ const RegistryFormSection = ({
                             ))}
                         </ul>
                     </div>
+                    {onValidationErrorsDownload &&
+                        validationErrorRowsCount > 0 && (
+                            <div className="mt-4">
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    icon={<HiOutlineDownload />}
+                                    onClick={onValidationErrorsDownload}
+                                >
+                                    Xato qatorlarni yuklab olish (
+                                    {validationErrorRowsCount})
+                                </Button>
+                            </div>
+                        )}
                 </Alert>
             )}
 

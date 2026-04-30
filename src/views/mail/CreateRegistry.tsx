@@ -21,7 +21,11 @@ import RegistryResultModal from './components/create-registry/RegistryResultModa
 import {
     type Option,
     type RegistryApiResult,
+    type RegistryParsedRow,
+    buildApiFailedDownloadRows,
+    buildValidationDownloadRows,
     createRegistryErrorResult,
+    downloadValidationRowsExcel,
     getInternalRequiredHeaders,
     getExternalRequiredHeaders,
     isExcelFile,
@@ -34,6 +38,7 @@ import {
 } from './components/create-registry/createRegistry.utils'
 
 const BRANCH_SELECT_ROLES = [ROLE_WORKER, ROLE_BRANCH_DIRECTOR, ROLE_ADMIN]
+type RegistryTabType = 'internal' | 'external'
 
 const CreateRegistry = () => {
     const { t } = useTranslation()
@@ -58,9 +63,6 @@ const CreateRegistry = () => {
     const submitRegistryProcess = useRegistryProcessStore(
         (state) => state.submitRegistryProcess,
     )
-    const showPendingBackgroundNotifications = useRegistryProcessStore(
-        (state) => state.showPendingBackgroundNotifications,
-    )
     const role = Number(userProfile?.role || 0)
     const isAdminRole = role === ROLE_ADMIN
     const isWorkerRole = role === ROLE_WORKER
@@ -73,6 +75,11 @@ const CreateRegistry = () => {
     const [internalValidationErrors, setInternalValidationErrors] = useState<
         string[]
     >([])
+    const [internalValidationDownloadRows, setInternalValidationDownloadRows] =
+        useState<Record<string, string>[]>([])
+    const [internalParsedRows, setInternalParsedRows] = useState<
+        RegistryParsedRow[]
+    >([])
     const [internalUploadedFiles, setInternalUploadedFiles] = useState<File[]>(
         [],
     )
@@ -81,6 +88,11 @@ const CreateRegistry = () => {
     const [externalValidationErrors, setExternalValidationErrors] = useState<
         string[]
     >([])
+    const [externalValidationDownloadRows, setExternalValidationDownloadRows] =
+        useState<Record<string, string>[]>([])
+    const [externalParsedRows, setExternalParsedRows] = useState<
+        RegistryParsedRow[]
+    >([])
     const [externalUploadedFiles, setExternalUploadedFiles] = useState<File[]>(
         [],
     )
@@ -88,6 +100,11 @@ const CreateRegistry = () => {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isModalOpen, setIsModalOpen] = useState(false)
     const [apiResult, setApiResult] = useState<RegistryApiResult | null>(null)
+    const [modalFailedRows, setModalFailedRows] = useState<
+        Record<string, string>[]
+    >([])
+    const [modalResultType, setModalResultType] =
+        useState<RegistryTabType | null>(null)
 
     useEffect(() => {
         getTemplates()
@@ -97,10 +114,9 @@ const CreateRegistry = () => {
         isMountedRef.current = true
 
         return () => {
-            void showPendingBackgroundNotifications()
             isMountedRef.current = false
         }
-    }, [showPendingBackgroundNotifications])
+    }, [])
 
     useEffect(() => {
         if (role === ROLE_WORKER || role === ROLE_BRANCH_DIRECTOR) {
@@ -177,6 +193,14 @@ const CreateRegistry = () => {
 
             if (result.error) {
                 setInternalValidationErrors([result.error])
+                setInternalParsedRows([])
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
@@ -186,6 +210,8 @@ const CreateRegistry = () => {
                 setInternalValidationErrors([
                     "Excel faylda o'qiladigan ma'lumot topilmadi",
                 ])
+                setInternalParsedRows([])
+                setInternalValidationDownloadRows([])
                 return
             }
 
@@ -193,16 +219,33 @@ const CreateRegistry = () => {
                 setInternalValidationErrors([
                     'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
+                setInternalParsedRows([])
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
-            const errors = validateInternalExcelData(normalizedData)
+            const validationResult = validateInternalExcelData(result.parsedRows)
 
-            if (errors.length > 0) {
-                setInternalValidationErrors(errors)
+            if (validationResult.errors.length > 0) {
+                setInternalValidationErrors(validationResult.errors)
+                setInternalParsedRows([])
+                setInternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        validationResult.issues,
+                    ),
+                )
                 return
             }
 
+            setInternalParsedRows(result.parsedRows)
+            setInternalValidationDownloadRows([])
             setInternalExcelData(normalizedData)
         }
 
@@ -233,6 +276,14 @@ const CreateRegistry = () => {
 
             if (result.error) {
                 setExternalValidationErrors([result.error])
+                setExternalParsedRows([])
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
@@ -242,6 +293,8 @@ const CreateRegistry = () => {
                 setExternalValidationErrors([
                     "Excel faylda o'qiladigan ma'lumot topilmadi",
                 ])
+                setExternalParsedRows([])
+                setExternalValidationDownloadRows([])
                 return
             }
 
@@ -249,16 +302,34 @@ const CreateRegistry = () => {
                 setExternalValidationErrors([
                     'Excel file contains more than 500 records. Maximum allowed is 500.',
                 ])
+                setExternalParsedRows([])
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        [],
+                        true,
+                    ),
+                )
                 return
             }
 
-            const errors = validateExternalExcelData(normalizedData)
+            const validationResult = validateExternalExcelData(result.parsedRows)
 
-            if (errors.length > 0) {
-                setExternalValidationErrors(errors)
+            if (validationResult.errors.length > 0) {
+                setExternalValidationErrors(validationResult.errors)
+                setExternalParsedRows([])
+                setExternalValidationDownloadRows(
+                    buildValidationDownloadRows(
+                        result.originalRows,
+                        validationResult.issues,
+                        validationResult.issues.length === 0,
+                    ),
+                )
                 return
             }
 
+            setExternalParsedRows(result.parsedRows)
+            setExternalValidationDownloadRows([])
             setExternalExcelData(normalizedData)
         }
 
@@ -267,7 +338,9 @@ const CreateRegistry = () => {
 
     const handleInternalFileUpload = (files: File[], form: any) => {
         setInternalValidationErrors([])
+        setInternalValidationDownloadRows([])
         setInternalExcelData([])
+        setInternalParsedRows([])
 
         if (!files || files.length === 0) return
 
@@ -286,7 +359,9 @@ const CreateRegistry = () => {
 
     const handleExternalFileUpload = (files: File[], form: any) => {
         setExternalValidationErrors([])
+        setExternalValidationDownloadRows([])
         setExternalExcelData([])
+        setExternalParsedRows([])
 
         if (!files || files.length === 0) return
 
@@ -306,15 +381,77 @@ const CreateRegistry = () => {
     const handleInternalFileRemove = (form: any) => {
         setInternalUploadedFiles([])
         setInternalExcelData([])
+        setInternalParsedRows([])
         setInternalValidationErrors([])
+        setInternalValidationDownloadRows([])
         form.setFieldValue('file', null)
     }
 
     const handleExternalFileRemove = (form: any) => {
         setExternalUploadedFiles([])
         setExternalExcelData([])
+        setExternalParsedRows([])
         setExternalValidationErrors([])
+        setExternalValidationDownloadRows([])
         form.setFieldValue('file', null)
+    }
+
+    const createExportFileName = (
+        type: RegistryTabType,
+        kind: 'validation_errors' | 'failed_rows',
+    ) => {
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+
+        return `registry_${kind}_${type}_${timestamp}.xlsx`
+    }
+
+    const handleValidationRowsDownload = (
+        rows: Record<string, string>[],
+        type: RegistryTabType,
+    ) => {
+        const downloaded = downloadValidationRowsExcel(
+            rows,
+            createExportFileName(type, 'validation_errors'),
+        )
+
+        toast.push(
+            <Notification type={downloaded ? 'success' : 'warning'}>
+                {downloaded
+                    ? 'Xato qatorlar Excel faylga yuklab olindi'
+                    : 'Yuklab olish uchun xato qatorlar topilmadi'}
+            </Notification>,
+        )
+    }
+
+    const handleBackendFailedRowsDownload = () => {
+        if (!modalResultType) {
+            return
+        }
+
+        const downloaded = downloadValidationRowsExcel(
+            modalFailedRows,
+            createExportFileName(modalResultType, 'failed_rows'),
+        )
+
+        toast.push(
+            <Notification type={downloaded ? 'success' : 'warning'}>
+                {downloaded
+                    ? "Backend xatoligi bo'lgan qatorlar Excel faylga yuklab olindi"
+                    : "Backend xatoligi bo'yicha mos qatorlar topilmadi"}
+            </Notification>,
+        )
+    }
+
+    const resolveBackendFailedRows = (
+        type: RegistryTabType,
+        parsedRows: RegistryParsedRow[],
+        result: RegistryApiResult,
+    ) => {
+        if (result.errorCount === 0 || result.errorMessages.length === 0) {
+            return [] as Record<string, string>[]
+        }
+
+        return buildApiFailedDownloadRows(type, parsedRows, result.errorMessages)
     }
 
     const handleInternalSubmit = async (values: any) => {
@@ -384,6 +521,14 @@ const CreateRegistry = () => {
                 result.result &&
                 isMountedRef.current
             ) {
+                setModalFailedRows(
+                    resolveBackendFailedRows(
+                        'internal',
+                        internalParsedRows,
+                        result.result,
+                    ),
+                )
+                setModalResultType('internal')
                 setApiResult(result.result)
                 setIsModalOpen(true)
             } else if (
@@ -391,6 +536,8 @@ const CreateRegistry = () => {
                 result.errorMessage &&
                 isMountedRef.current
             ) {
+                setModalFailedRows([])
+                setModalResultType('internal')
                 setApiResult(createRegistryErrorResult(result.errorMessage))
                 setIsModalOpen(true)
             }
@@ -467,6 +614,14 @@ const CreateRegistry = () => {
                 result.result &&
                 isMountedRef.current
             ) {
+                setModalFailedRows(
+                    resolveBackendFailedRows(
+                        'external',
+                        externalParsedRows,
+                        result.result,
+                    ),
+                )
+                setModalResultType('external')
                 setApiResult(result.result)
                 setIsModalOpen(true)
             } else if (
@@ -474,6 +629,8 @@ const CreateRegistry = () => {
                 result.errorMessage &&
                 isMountedRef.current
             ) {
+                setModalFailedRows([])
+                setModalResultType('external')
                 setApiResult(createRegistryErrorResult(result.errorMessage))
                 setIsModalOpen(true)
             }
@@ -486,6 +643,8 @@ const CreateRegistry = () => {
 
     const handleCloseModal = () => {
         setIsModalOpen(false)
+        setModalFailedRows([])
+        setModalResultType(null)
         if (apiResult?.status === 'success') {
             navigate('/mail/draftmails')
         }
@@ -559,8 +718,17 @@ const CreateRegistry = () => {
                                         validationErrors={
                                             internalValidationErrors
                                         }
+                                        validationErrorRowsCount={
+                                            internalValidationDownloadRows.length
+                                        }
                                         validateRegistryFile={
                                             validateRegistryFile
+                                        }
+                                        onValidationErrorsDownload={() =>
+                                            handleValidationRowsDownload(
+                                                internalValidationDownloadRows,
+                                                'internal',
+                                            )
                                         }
                                         onFileChange={(files) =>
                                             handleInternalFileUpload(
@@ -619,8 +787,17 @@ const CreateRegistry = () => {
                                         validationErrors={
                                             externalValidationErrors
                                         }
+                                        validationErrorRowsCount={
+                                            externalValidationDownloadRows.length
+                                        }
                                         validateRegistryFile={
                                             validateRegistryFile
+                                        }
+                                        onValidationErrorsDownload={() =>
+                                            handleValidationRowsDownload(
+                                                externalValidationDownloadRows,
+                                                'external',
+                                            )
                                         }
                                         onFileChange={(files) =>
                                             handleExternalFileUpload(
@@ -647,6 +824,8 @@ const CreateRegistry = () => {
             <RegistryResultModal
                 isOpen={isModalOpen}
                 apiResult={apiResult}
+                failedRowsCount={modalFailedRows.length}
+                onFailedRowsDownload={handleBackendFailedRowsDownload}
                 onClose={handleCloseModal}
             />
         </div>

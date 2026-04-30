@@ -2,11 +2,11 @@ import { create } from 'zustand'
 import axios from 'axios'
 import Notification from '@/components/ui/Notification'
 import toast from '@/components/ui/toast'
+import { PLACEMENT } from '@/components/ui/utils/constants'
 import { useAccountStore } from './accountStore'
 import { mapApiResult, type RegistryApiResult } from '@/views/mail/components/create-registry/createRegistry.utils'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL || 'https://tezdoc.kcloud.uz/api'
-const REGISTRY_ROUTE = '/mail/create-registry'
 
 type RegistryProcessType = 'internal' | 'external'
 type RegistryProcessStatus = 'pending' | 'success' | 'error'
@@ -38,7 +38,6 @@ type RegistryProcessStore = {
     submitRegistryProcess: (
         params: SubmitRegistryProcessParams,
     ) => Promise<SubmitRegistryProcessResult>
-    showPendingBackgroundNotifications: () => Promise<void>
     removeJob: (jobId: string) => void
 }
 
@@ -81,14 +80,6 @@ const getJobTitle = (type: RegistryProcessType) => {
         : 'Reyestr yaratish'
 }
 
-const isRegistryPageActive = () => {
-    if (typeof window === 'undefined') {
-        return false
-    }
-
-    return window.location.pathname.startsWith(REGISTRY_ROUTE)
-}
-
 const resolveToastId = async (
     key: string | undefined | Promise<string | undefined>,
 ) => {
@@ -99,10 +90,84 @@ const resolveToastId = async (
     return (await key) || undefined
 }
 
+const pushPendingNotification = async (type: RegistryProcessType) => {
+    return resolveToastId(
+        toast.push(
+            <Notification
+                title={`${getJobTitle(type)} davom etmoqda`}
+                type="info"
+                closable
+                duration={0}
+            >
+                So&apos;rov yuborildi. Jarayon fon rejimida davom etadi.
+                Tayyor bo&apos;lgach holati shu yerda ko&apos;rinadi.
+            </Notification>,
+            {
+                placement: PLACEMENT.TOP_END,
+            },
+        ),
+    )
+}
+
+const pushSuccessNotification = async (
+    type: RegistryProcessType,
+    result: RegistryApiResult,
+) => {
+    const hasErrors = result.errorCount > 0
+    const isAllFailed = hasErrors && result.successCount === 0
+
+    return resolveToastId(
+        toast.push(
+            <Notification
+                title={
+                    isAllFailed
+                        ? `${getJobTitle(type)} xatolik bilan tugadi`
+                        : hasErrors
+                          ? `${getJobTitle(type)} qisman yakunlandi`
+                          : `${getJobTitle(type)} yakunlandi`
+                }
+                type={isAllFailed ? 'danger' : hasErrors ? 'warning' : 'success'}
+                closable
+                duration={0}
+            >
+                Muvaffaqiyatli: {result.successCount}, xatolik:{' '}
+                {result.errorCount}
+            </Notification>,
+            {
+                placement: PLACEMENT.TOP_END,
+            },
+        ),
+    )
+}
+
+const pushErrorNotification = async (
+    type: RegistryProcessType,
+    errorMessage: string,
+) => {
+    return resolveToastId(
+        toast.push(
+            <Notification
+                title={`${getJobTitle(type)} xatolik bilan tugadi`}
+                type="danger"
+                closable
+                duration={0}
+            >
+                {errorMessage}
+            </Notification>,
+            {
+                placement: PLACEMENT.TOP_END,
+            },
+        ),
+    )
+}
+
 export const useRegistryProcessStore = create<RegistryProcessStore>((set, get) => ({
     jobs: [],
 
-    submitRegistryProcess: async ({ type, payload }) => {
+    submitRegistryProcess: async ({
+        type,
+        payload,
+    }) => {
         const jobId = `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
         const endpoint =
             type === 'external'
@@ -121,15 +186,40 @@ export const useRegistryProcessStore = create<RegistryProcessStore>((set, get) =
             ],
         }))
 
+        const pendingToastId = await pushPendingNotification(type)
+
+        if (pendingToastId) {
+            set((state) => ({
+                jobs: state.jobs.map((job) =>
+                    job.id === jobId
+                        ? {
+                              ...job,
+                              toastId: pendingToastId,
+                          }
+                        : job,
+                ),
+            }))
+        }
+
         try {
             const response = await axios.post(`${BASE_URL}${endpoint}`, payload, {
                 headers: getHeaders(),
             })
 
+            if (response.status !== 200) {
+                throw {
+                    response: {
+                        data: {
+                            message:
+                                response.data?.message ||
+                                `Kutilmagan status kod: ${response.status}`,
+                        },
+                    },
+                }
+            }
+
             const result = mapApiResult(response)
             const currentJob = get().jobs.find((job) => job.id === jobId)
-            const shouldShowBackgroundToast =
-                Boolean(currentJob?.toastId) || !isRegistryPageActive()
 
             if (currentJob?.toastId) {
                 toast.remove(currentJob.toastId)
@@ -142,24 +232,13 @@ export const useRegistryProcessStore = create<RegistryProcessStore>((set, get) =
                               ...job,
                               status: 'success',
                               result,
+                              toastId: undefined,
                           }
                         : job,
                 ),
             }))
 
-            if (shouldShowBackgroundToast) {
-                toast.push(
-                    <Notification
-                        title={`${getJobTitle(type)} yakunlandi`}
-                        type="success"
-                        closable
-                        duration={0}
-                    >
-                        Jami: {result.totalProcessed}, muvaffaqiyatli:{' '}
-                        {result.successCount}, xatolik: {result.errorCount}
-                    </Notification>,
-                )
-            }
+            await pushSuccessNotification(type, result)
 
             return {
                 success: true,
@@ -170,8 +249,6 @@ export const useRegistryProcessStore = create<RegistryProcessStore>((set, get) =
             const errorMessage =
                 error.response?.data?.message || 'Xatolik yuz berdi'
             const currentJob = get().jobs.find((job) => job.id === jobId)
-            const shouldShowBackgroundToast =
-                Boolean(currentJob?.toastId) || !isRegistryPageActive()
 
             if (currentJob?.toastId) {
                 toast.remove(currentJob.toastId)
@@ -184,62 +261,19 @@ export const useRegistryProcessStore = create<RegistryProcessStore>((set, get) =
                               ...job,
                               status: 'error',
                               errorMessage,
+                              toastId: undefined,
                           }
                         : job,
                 ),
             }))
 
-            if (shouldShowBackgroundToast) {
-                toast.push(
-                    <Notification
-                        title={`${getJobTitle(type)} xatolik bilan tugadi`}
-                        type="danger"
-                        closable
-                        duration={0}
-                    >
-                        {errorMessage}
-                    </Notification>,
-                )
-            }
+            await pushErrorNotification(type, errorMessage)
 
             return {
                 success: false,
                 jobId,
                 errorMessage,
             }
-        }
-    },
-
-    showPendingBackgroundNotifications: async () => {
-        const pendingJobs = get().jobs.filter(
-            (job) => job.status === 'pending' && !job.toastId,
-        )
-
-        for (const job of pendingJobs) {
-            const toastId = await resolveToastId(
-                toast.push(
-                    <Notification
-                        title={`${getJobTitle(job.type)} davom etmoqda`}
-                        type="info"
-                        closable
-                        duration={0}
-                    >
-                        So&apos;rov yuborildi. Jarayon fon rejimida davom etadi.
-                        Tayyor bo&apos;lgach holati shu yerda ko&apos;rinadi.
-                    </Notification>,
-                ),
-            )
-
-            set((state) => ({
-                jobs: state.jobs.map((item) =>
-                    item.id === job.id
-                        ? {
-                              ...item,
-                              toastId,
-                          }
-                        : item,
-                ),
-            }))
         }
     },
 
