@@ -155,6 +155,20 @@ const getWorksheetCellDisplayValue = (cell?: XLSX.CellObject) => {
         }
     }
 
+    // Excel renders large integers (e.g. 14-digit PINFL) in scientific
+    // notation like `1.23457E+13`, which would lose digits once non-numerics
+    // are stripped. Use the raw integer value in that case.
+    if (
+        cell.t === 'n' &&
+        typeof cell.v === 'number' &&
+        Number.isFinite(cell.v) &&
+        Number.isInteger(cell.v) &&
+        typeof cell.w === 'string' &&
+        /[eE][+-]?\d+/.test(cell.w)
+    ) {
+        return cell.v.toFixed(0)
+    }
+
     // Prefer the formatted display text from Excel so values like
     // `05/01/2026` are preserved exactly as shown in the sheet.
     if (typeof cell.w === 'string') {
