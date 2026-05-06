@@ -82,6 +82,18 @@ const HEADER_ALIASES: Record<string, string> = {
     filial: 'branch_id',
     filial_id: 'branch_id',
 
+    templatename: 'templateName',
+    template_name: 'templateName',
+    template: 'templateName',
+    shablon_name: 'templateName',
+    shablonname: 'templateName',
+    shablon: 'templateName',
+    shablon_turi: 'templateName',
+    shablon_nomi: 'templateName',
+    шаблон: 'templateName',
+    шаблон_тури: 'templateName',
+    шаблон_номи: 'templateName',
+
     pinfl_or_inn: 'pinfl_or_inn',
     pinflorinn: 'pinfl_or_inn',
     pinfl_inn: 'pinfl_or_inn',
@@ -309,6 +321,152 @@ const normalizeTextForLookup = (value: unknown) => {
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim()
+}
+
+const transliterateCyrillicToLatin = (value: string) => {
+    const letters: Record<string, string> = {
+        а: 'a',
+        б: 'b',
+        в: 'v',
+        г: 'g',
+        д: 'd',
+        е: 'e',
+        ё: 'yo',
+        ж: 'j',
+        з: 'z',
+        и: 'i',
+        й: 'y',
+        к: 'k',
+        л: 'l',
+        м: 'm',
+        н: 'n',
+        о: 'o',
+        п: 'p',
+        р: 'r',
+        с: 's',
+        т: 't',
+        у: 'u',
+        ф: 'f',
+        х: 'x',
+        ц: 'ts',
+        ч: 'ch',
+        ш: 'sh',
+        щ: 'sh',
+        ъ: '',
+        ы: 'i',
+        ь: '',
+        э: 'e',
+        ю: 'yu',
+        я: 'ya',
+        ў: 'o',
+        қ: 'q',
+        ғ: 'g',
+        ҳ: 'h',
+    }
+
+    return value
+        .toLowerCase()
+        .split('')
+        .map((letter) => letters[letter] ?? letter)
+        .join('')
+}
+
+const normalizeTemplateNameForMatch = (value: unknown) => {
+    return transliterateCyrillicToLatin(String(value ?? ''))
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '')
+        .trim()
+}
+
+const getTemplateMatchScore = (source: string, candidate: string) => {
+    if (!source || !candidate) {
+        return 0
+    }
+
+    if (source === candidate) {
+        return 100
+    }
+
+    if (source.includes(candidate) || candidate.includes(source)) {
+        return Math.round(
+            (Math.min(source.length, candidate.length) /
+                Math.max(source.length, candidate.length)) *
+                80,
+        )
+    }
+
+    return 0
+}
+
+export const resolveTemplateNameFromExcelValue = (
+    value: unknown,
+    templateNames: string[],
+) => {
+    const source = normalizeTemplateNameForMatch(value)
+
+    if (!source) {
+        return ''
+    }
+
+    return templateNames.reduce(
+        (bestMatch, templateName) => {
+            const candidate = normalizeTemplateNameForMatch(templateName)
+            const score = getTemplateMatchScore(source, candidate)
+
+            if (score > bestMatch.score) {
+                return {
+                    name: templateName,
+                    score,
+                }
+            }
+
+            return bestMatch
+        },
+        {
+            name: '',
+            score: 0,
+        },
+    ).name
+}
+
+export const getExcelTemplateNameValue = (row: Record<string, any>) => {
+    return row.templateName ?? ''
+}
+
+export const validateExcelTemplateNames = (
+    parsedRows: RegistryParsedRow[],
+    templateNames: string[],
+): RegistryValidationResult => {
+    const errors: string[] = []
+    const issues: RegistryValidationIssue[] = []
+
+    parsedRows.forEach(({ rowNumber, normalizedRow }) => {
+        const excelTemplateName = getExcelTemplateNameValue(normalizedRow)
+        const matchedTemplateName = resolveTemplateNameFromExcelValue(
+            excelTemplateName,
+            templateNames,
+        )
+
+        if (!String(excelTemplateName ?? '').trim()) {
+            const message = `Qator ${rowNumber}: Excel ichida shablon nomi bo'sh`
+
+            errors.push(message)
+            issues.push({ rowNumber, message })
+            return
+        }
+
+        if (!matchedTemplateName) {
+            const message = `Qator ${rowNumber}: "${excelTemplateName}" shabloni mavjud shablonlar ichidan topilmadi`
+
+            errors.push(message)
+            issues.push({ rowNumber, message })
+        }
+    })
+
+    return {
+        errors,
+        issues,
+    }
 }
 
 const extractQuotedValues = (message: string) => {
@@ -632,10 +790,24 @@ export const downloadValidationRowsExcel = (
     return true
 }
 
+const sanitizeBackendContentValue = (value: unknown) => {
+    const stringValue = String(value ?? '')
+
+    if (!/\d/.test(stringValue)) {
+        return stringValue
+    }
+
+    return stringValue.replace(/[$€£¥₽₩]/g, '').trim()
+}
+
 export const transformInternalDataToApiFormat = (
     rawData: any[],
     templateName: string,
     selectedBranchId?: number | null,
+    options?: {
+        readTemplateFromExcel?: boolean
+        templateNames?: string[]
+    },
 ) => {
     const cleanRows = rawData.filter((row) => {
         return row && isMeaningfulValue(row.receiver)
@@ -644,9 +816,18 @@ export const transformInternalDataToApiFormat = (
     return cleanRows.map((row) => {
         const { receiver, address, region, area, branch_id, ...rest } = row
         const contentObj: Record<string, string> = {}
+        const rowTemplateName =
+            options?.readTemplateFromExcel && options.templateNames
+                ? resolveTemplateNameFromExcelValue(
+                      getExcelTemplateNameValue(row),
+                      options.templateNames,
+                  )
+                : templateName
+
+        delete rest.templateName
 
         Object.keys(rest).forEach((key) => {
-            contentObj[key] = String(rest[key] ?? '')
+            contentObj[key] = sanitizeBackendContentValue(rest[key])
         })
 
         return {
@@ -655,7 +836,7 @@ export const transformInternalDataToApiFormat = (
             areaId: Number(area) || 0,
             address: String(address ?? ''),
             content: JSON.stringify(contentObj),
-            templateName,
+            templateName: rowTemplateName || templateName,
             BranchId: selectedBranchId
                 ? Number(selectedBranchId)
                 : branch_id
@@ -669,6 +850,10 @@ export const transformExternalDataToApiFormat = (
     rawData: any[],
     templateName: string,
     selectedBranchId?: number | null,
+    options?: {
+        readTemplateFromExcel?: boolean
+        templateNames?: string[]
+    },
 ) => {
     const cleanRows = rawData.filter((row) => {
         const { pinflOrInn } = getNormalizedExternalIdentifiers(row)
@@ -680,14 +865,23 @@ export const transformExternalDataToApiFormat = (
         const { pinfl, inn, pinfl_or_inn, branch_id, ...rest } = row
         const contentObj: Record<string, string> = {}
         const normalizedIdentifiers = getNormalizedExternalIdentifiers(row)
+        const rowTemplateName =
+            options?.readTemplateFromExcel && options.templateNames
+                ? resolveTemplateNameFromExcelValue(
+                      getExcelTemplateNameValue(row),
+                      options.templateNames,
+                  )
+                : templateName
+
+        delete rest.templateName
 
         Object.keys(rest).forEach((key) => {
-            contentObj[key] = String(rest[key] ?? '')
+            contentObj[key] = sanitizeBackendContentValue(rest[key])
         })
 
         return {
             pinflOrInn: normalizedIdentifiers.pinflOrInn,
-            templateName,
+            templateName: rowTemplateName || templateName,
             content: JSON.stringify(contentObj),
             branchId: selectedBranchId
                 ? Number(selectedBranchId)

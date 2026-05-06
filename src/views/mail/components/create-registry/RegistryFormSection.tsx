@@ -3,6 +3,7 @@ import Button from '@/components/ui/Button'
 import Select from '@/components/ui/Select'
 import Upload from '@/components/ui/Upload'
 import Alert from '@/components/ui/Alert'
+import Switcher from '@/components/ui/Switcher'
 import { HiOutlineCloudUpload, HiOutlineDownload } from 'react-icons/hi'
 import RegistryOrganizationBranchFields from './RegistryOrganizationBranchFields'
 import { EXCEL_ACCEPT, type Option } from './createRegistry.utils'
@@ -14,6 +15,7 @@ type TemplateOption = {
 
 type RegistryFormValues = {
     templateName: string
+    readTemplateFromExcel: boolean
     file: File | null
     organizationId: number | null
     branchId: number | null
@@ -78,15 +80,22 @@ const RegistryFormSection = ({
 
             <FormItem
                 label="Shablon turi"
-                invalid={!values.templateName && isSubmitting}
+                invalid={
+                    !values.readTemplateFromExcel &&
+                    !values.templateName &&
+                    isSubmitting
+                }
                 errorMessage="Shablon tanlash shart"
             >
                 <Select
                     className="rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800"
                     options={templateOptions}
                     isLoading={isTemplatesLoading}
+                    isDisabled={values.readTemplateFromExcel}
                     placeholder={
-                        isTemplatesLoading
+                        values.readTemplateFromExcel
+                            ? "Excel ichidagi shablon nomi o'qiladi"
+                            : isTemplatesLoading
                             ? 'Yuklanmoqda...'
                             : 'Shablonni tanlang...'
                     }
@@ -99,6 +108,23 @@ const RegistryFormSection = ({
                         setFieldValue('templateName', option?.value || '')
                     }
                 />
+                <div className="mt-5 flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-800/60">
+                    <Switcher
+                        checked={values.readTemplateFromExcel}
+                        onChange={(checked) =>
+                            setFieldValue('readTemplateFromExcel', checked)
+                        }
+                    />
+                    <div>
+                        <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                            Shablon excel ichidan o'qilsin
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Har bir qatordagi `shablon_name` qiymati mavjud
+                            shablonlar bilan solishtiriladi
+                        </div>
+                    </div>
+                </div>
             </FormItem>
 
             <FormItem
@@ -194,7 +220,7 @@ const RegistryFormSection = ({
                         isSubmitting ||
                         validationErrors.length > 0 ||
                         !values.file ||
-                        !values.templateName
+                        (!values.readTemplateFromExcel && !values.templateName)
                     }
                 >
                     Yaratish

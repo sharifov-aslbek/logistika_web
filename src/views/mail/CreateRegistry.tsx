@@ -21,6 +21,7 @@ import RegistryResultModal from './components/create-registry/RegistryResultModa
 import {
     type Option,
     type RegistryApiResult,
+    type RegistryOriginalRow,
     type RegistryParsedRow,
     buildApiFailedDownloadRows,
     buildValidationDownloadRows,
@@ -32,6 +33,7 @@ import {
     validateRegistryFile,
     validateInternalExcelData,
     validateExternalExcelData,
+    validateExcelTemplateNames,
     transformInternalDataToApiFormat,
     transformExternalDataToApiFormat,
     readSheetWithHeaders,
@@ -140,6 +142,7 @@ const CreateRegistry = () => {
         value: template.name,
         label: template.name,
     }))
+    const templateNames = templateOptions.map((option) => option.value)
 
     const orgOptions = myOrganizations.map((organization) => ({
         value: Number(organization.id),
@@ -454,6 +457,46 @@ const CreateRegistry = () => {
         return buildApiFailedDownloadRows(type, parsedRows, result.errorMessages)
     }
 
+    const validateExcelTemplateNameSelection = (
+        parsedRows: RegistryParsedRow[],
+        originalRows: RegistryOriginalRow[],
+        type: RegistryTabType,
+        readTemplateFromExcel: boolean,
+    ) => {
+        if (!readTemplateFromExcel) {
+            return true
+        }
+
+        const validationResult = validateExcelTemplateNames(
+            parsedRows,
+            templateNames,
+        )
+
+        if (validationResult.errors.length === 0) {
+            return true
+        }
+
+        if (type === 'internal') {
+            setInternalValidationErrors(validationResult.errors)
+            setInternalValidationDownloadRows(
+                buildValidationDownloadRows(originalRows, validationResult.issues),
+            )
+        } else {
+            setExternalValidationErrors(validationResult.errors)
+            setExternalValidationDownloadRows(
+                buildValidationDownloadRows(originalRows, validationResult.issues),
+            )
+        }
+
+        toast.push(
+            <Notification type="warning">
+                Excel ichidagi shablon nomlarini tekshiring
+            </Notification>,
+        )
+
+        return false
+    }
+
     const handleInternalSubmit = async (values: any) => {
         if (internalValidationErrors.length > 0) return
 
@@ -484,6 +527,20 @@ const CreateRegistry = () => {
             return
         }
 
+        if (
+            !validateExcelTemplateNameSelection(
+                internalParsedRows,
+                internalParsedRows.map((row) => ({
+                    rowNumber: row.rowNumber,
+                    rowObject: row.originalRow,
+                })),
+                'internal',
+                values.readTemplateFromExcel,
+            )
+        ) {
+            return
+        }
+
         setIsSubmitting(true)
 
         const payload = {
@@ -491,6 +548,10 @@ const CreateRegistry = () => {
                 internalExcelData,
                 values.templateName,
                 values.branchId,
+                {
+                    readTemplateFromExcel: values.readTemplateFromExcel,
+                    templateNames,
+                },
             ),
             ...(isBranchSelectionRole
                 ? {
@@ -578,6 +639,20 @@ const CreateRegistry = () => {
             return
         }
 
+        if (
+            !validateExcelTemplateNameSelection(
+                externalParsedRows,
+                externalParsedRows.map((row) => ({
+                    rowNumber: row.rowNumber,
+                    rowObject: row.originalRow,
+                })),
+                'external',
+                values.readTemplateFromExcel,
+            )
+        ) {
+            return
+        }
+
         setIsSubmitting(true)
 
         const payload = {
@@ -585,6 +660,10 @@ const CreateRegistry = () => {
                 externalExcelData,
                 values.templateName,
                 values.branchId,
+                {
+                    readTemplateFromExcel: values.readTemplateFromExcel,
+                    templateNames,
+                },
             ),
             ...(isBranchSelectionRole
                 ? {
@@ -686,6 +765,7 @@ const CreateRegistry = () => {
                     <Formik
                         initialValues={{
                             templateName: '',
+                            readTemplateFromExcel: false,
                             file: null,
                             organizationId: null,
                             branchId: null,
@@ -755,6 +835,7 @@ const CreateRegistry = () => {
                     <Formik
                         initialValues={{
                             templateName: '',
+                            readTemplateFromExcel: false,
                             file: null,
                             organizationId: null,
                             branchId: null,
